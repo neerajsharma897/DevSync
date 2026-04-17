@@ -25,14 +25,14 @@ const ProjectPage: React.FC = () => {
       <header className="px-8 pt-8 pb-4 shrink-0">
         <div className="flex items-start justify-between mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-accent-purple to-accent-indigo flex items-center justify-center shadow-lg glow-purple">
+            <div className="w-12 h-12 rounded-2xl bg-white text-black flex items-center justify-center shadow-lg">
                <span className="text-xl font-bold">DP</span>
             </div>
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold">DevSync Platform</h1>
-                <span className="px-2 py-0.5 rounded-md bg-success/10 text-success text-[10px] font-bold border border-success/20 flex items-center gap-1">
-                   <div className="w-1 h-1 rounded-full bg-success animate-pulse" />
+                <span className="px-2 py-0.5 rounded-md bg-white/10 text-white text-[10px] font-bold border border-white/20 flex items-center gap-1">
+                   <div className="w-1 h-1 rounded-full bg-white animate-pulse" />
                    Active
                 </span>
               </div>
@@ -63,14 +63,14 @@ const ProjectPage: React.FC = () => {
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all relative ${
                 activeTab === tab.id 
-                  ? 'text-accent-purple' 
+                  ? 'text-white' 
                   : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover/30'
               }`}
             >
               {tab.icon}
               <span>{tab.label}</span>
               {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-purple shadow-[0_0_8px_rgba(168,85,247,0.6)]" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white" />
               )}
             </button>
           ))}

@@ -33,7 +33,7 @@ const ChatSidebar: React.FC = () => {
         <div>
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Channels</span>
-            <button className="text-text-muted hover:text-accent-purple"><Plus size={14} /></button>
+            <button className="text-text-muted hover:text-white"><Plus size={14} /></button>
           </div>
           <div className="space-y-0.5">
             {publicChannels.map(channel => (
@@ -42,7 +42,7 @@ const ChatSidebar: React.FC = () => {
                 to={`/chat/${channel.id}`}
                 className={({ isActive }) => 
                   `flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
-                    isActive ? 'bg-accent-purple/10 text-accent-purple font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+                    isActive ? 'bg-white/10 text-white font-medium border border-white/10' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                   }`
                 }
               >
@@ -65,11 +65,11 @@ const ChatSidebar: React.FC = () => {
                 to={`/chat/${channel.id}`}
                 className={({ isActive }) => 
                   `flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
-                    isActive ? 'bg-accent-purple/10 text-accent-purple font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+                    isActive ? 'bg-white/10 text-white font-medium border border-white/10' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                   }`
                 }
               >
-                <Lock size={14} />
+                <Hash size={14} />
                 <span>{channel.name}</span>
               </NavLink>
             ))}
@@ -90,7 +90,7 @@ const ChatSidebar: React.FC = () => {
                   to={`/chat/${dm.id}`}
                   className={({ isActive }) => 
                     `flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
-                      isActive ? 'bg-accent-purple/10 text-accent-purple font-medium' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+                      isActive ? 'bg-white/10 text-white font-medium border border-white/10' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                     }`
                   }
                 >

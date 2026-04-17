@@ -45,8 +45,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
       {...attributes}
       {...listeners}
       onClick={handleTaskClick}
-      className={`glass-card p-4 hover:border-accent-purple/40 transition-all cursor-grab active:cursor-grabbing group animate-scaleIn ${
-        isDragging ? 'opacity-50 border-accent-purple shadow-xl z-50' : ''
+      className={`glass-card p-4 hover:border-white/40 transition-all cursor-grab active:cursor-grabbing group animate-scaleIn ${
+        isDragging ? 'opacity-50 border-white shadow-xl z-50' : ''
       }`}
     >
       <div className="flex items-start justify-between mb-3">
@@ -67,7 +67,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
         </button>
       </div>
 
-      <h4 className="text-[13px] font-semibold mb-3 leading-snug group-hover:text-accent-purple transition-colors line-clamp-2 min-h-[2.5em]">
+      <h4 className="text-[13px] font-semibold mb-3 leading-snug group-hover:text-white transition-colors line-clamp-2 min-h-[2.5em]">
         {task.title}
       </h4>
 
@@ -90,7 +90,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onClick }) => {
               <img 
                 src={assignee.avatar} 
                 alt={assignee.fullName} 
-                className="w-6 h-6 rounded-full border border-border-default hover:border-accent-purple transition-all"
+                className="w-6 h-6 rounded-full border border-border-default hover:border-white transition-all"
               />
               <div className="absolute bottom-full right-0 mb-2 px-2 py-1 bg-bg-elevated border border-border-default rounded text-[10px] whitespace-nowrap opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none">
                 {assignee.fullName}

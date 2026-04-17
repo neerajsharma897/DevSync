@@ -112,7 +112,7 @@ const KanbanBoard: React.FC = () => {
                  className="glass-input pl-9 pr-4 py-1.5 text-xs w-64 focus:glass-input-focus"
                />
             </div>
-            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-default hover:border-accent-purple/50 text-xs text-text-secondary transition-all">
+            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border-default hover:border-white text-xs text-text-secondary transition-all">
                <Filter size={14} />
                <span>Filters</span>
             </button>
@@ -124,7 +124,7 @@ const KanbanBoard: React.FC = () => {
                     {String.fromCharCode(64 + i)}
                  </div>
                ))}
-               <div className="w-7 h-7 rounded-full border-2 border-bg-primary bg-accent-purple flex items-center justify-center text-[10px] font-bold">
+               <div className="w-7 h-7 rounded-full border-2 border-bg-primary bg-white text-black flex items-center justify-center text-[10px] font-bold">
                   +2
                </div>
             </div>

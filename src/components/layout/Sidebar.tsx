@@ -48,7 +48,7 @@ const Sidebar: React.FC = () => {
             className={({ isActive }) => 
               `flex items-center gap-3 p-3 rounded-xl transition-all ${
                 isActive 
-                  ? 'bg-accent-purple/20 text-accent-purple border border-accent-purple/30' 
+                  ? 'bg-white/10 text-white border border-white/20' 
                   : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
               }`
             }
@@ -62,7 +62,7 @@ const Sidebar: React.FC = () => {
           <div className="mt-8 pt-6 border-t border-border-default">
             <div className="flex items-center justify-between px-2 mb-4">
               <span className="text-xs font-bold text-text-muted uppercase tracking-widest">Recent Projects</span>
-              <button className="text-text-secondary hover:text-accent-purple">
+              <button className="text-text-secondary hover:text-white">
                 <Plus size={14} />
               </button>
             </div>
@@ -72,7 +72,7 @@ const Sidebar: React.FC = () => {
                 to={`/projects/${proj.id}`}
                 className="flex items-center gap-3 p-2 rounded-lg text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-all text-sm"
               >
-                <div className="w-2 h-2 rounded-full bg-accent-purple"></div>
+                <div className="w-2 h-2 rounded-full bg-white"></div>
                 <span>{proj.name}</span>
               </NavLink>
             ))}
@@ -89,7 +89,7 @@ const Sidebar: React.FC = () => {
           {!isCollapsed && <span className="font-medium text-sm">Settings</span>}
         </NavLink>
         <div className="flex items-center gap-3 p-3 mt-2 rounded-2xl bg-bg-tertiary/50 border border-border-default">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-accent-purple to-accent-indigo" />
+          <div className="w-8 h-8 rounded-full bg-white/20 border border-white/30" />
           {!isCollapsed && (
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-semibold truncate">Arjun Mehta</p>

@@ -31,7 +31,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ column, tasks, onTaskClick 
           </span>
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-           <button className="text-text-muted hover:text-accent-purple p-1 rounded transition-colors">
+           <button className="text-text-muted hover:text-white p-1 rounded transition-colors">
               <Plus size={14} />
            </button>
            <button className="text-text-muted hover:text-text-primary p-1 rounded transition-colors">
