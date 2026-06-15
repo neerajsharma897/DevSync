@@ -263,3 +263,85 @@ export const removeProjectMember = async (req: Request, res: Response): Promise<
     res.status(500).json({ error: 'Server error removing project member.' });
   }
 };
+
+// ─── LIST PROJECT MEMBERS ─────────────────────────────────────────────────
+// GET /api/workspaces/:slug/projects/:key/members
+export const listProjectMembers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { projectId } = req.params as Record<string, string>;
+
+    const members = await db
+      .select({
+        id: projectMembers.id,
+        userId: projectMembers.userId,
+        role: projectMembers.role,
+        addedAt: projectMembers.addedAt,
+        fullName: users.fullName,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(projectMembers)
+      .innerJoin(users, eq(projectMembers.userId, users.userId))
+      .where(eq(projectMembers.projectId, projectId));
+
+    res.json({ members });
+  } catch (err) {
+    console.error('List project members error:', err);
+    res.status(500).json({ error: 'Server error listing project members.' });
+  }
+};
+
+// ─── UPDATE PROJECT MEMBER ROLE ───────────────────────────────────────────
+// PUT /api/workspaces/:slug/projects/:key/members/:userId
+export const updateProjectMemberRole = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { projectId, userId } = req.params as Record<string, string>;
+    const { role } = req.body;
+
+    if (!role || !['project_admin', 'developer', 'viewer'].includes(role)) {
+      res.status(400).json({ error: 'Role must be "project_admin", "developer", or "viewer".' });
+      return;
+    }
+
+    const [updated] = await db
+      .update(projectMembers)
+      .set({ role })
+      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: 'Member not found in this project.' });
+      return;
+    }
+
+    res.json({ message: 'Project member role updated', member: updated });
+  } catch (err) {
+    console.error('Update project member role error:', err);
+    res.status(500).json({ error: 'Server error updating project member role.' });
+  }
+};
+
+// ─── ARCHIVE PROJECT ─────────────────────────────────────────────────────
+// PATCH /api/workspaces/:slug/projects/:key/archive
+export const archiveProject = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { projectId } = req.params as Record<string, string>;
+
+    const [updated] = await db
+      .update(projects)
+      .set({ status: 'archived', updatedAt: new Date() })
+      .where(eq(projects.projectId, projectId))
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: 'Project not found.' });
+      return;
+    }
+
+    res.json({ message: 'Project archived', project: updated });
+  } catch (err) {
+    console.error('Archive project error:', err);
+    res.status(500).json({ error: 'Server error archiving project.' });
+  }
+};

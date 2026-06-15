@@ -67,7 +67,7 @@ const GithubIntegrationView: React.FC = () => {
             {ciRuns.map(run => (
               <div key={run.id} className="glass-card p-4 border border-border-default flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  {run.status === 'success' ? <CheckCircle2 size={20} className="text-emerald-500" /> :
+                  {run.status === 'success' ? <CheckCircle2 size={20} className="text-white" /> :
                    run.status === 'failure' ? <XCircle size={20} className="text-red-500" /> :
                    <Clock size={20} className="text-amber-500" />}
                   
@@ -75,7 +75,7 @@ const GithubIntegrationView: React.FC = () => {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium text-sm">{run.name}</span>
                       <span className={`text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${
-                        run.status === 'success' ? 'bg-emerald-500/10 text-emerald-500' :
+                        run.status === 'success' ? 'bg-white/10 text-white' :
                         run.status === 'failure' ? 'bg-red-500/10 text-red-500' :
                         'bg-amber-500/10 text-amber-500'
                       }`}>

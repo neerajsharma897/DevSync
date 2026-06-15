@@ -44,7 +44,7 @@ const SearchPage: React.FC = () => {
                 <div className="space-y-2">
                   {results.tasks.map(task => (
                     <div key={task.id} className="glass-card p-4 flex items-center gap-4 hover:bg-bg-hover cursor-pointer border border-border-default hover:border-accent-purple/30 transition-all">
-                      <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-white/10 text-gray-300 flex items-center justify-center shrink-0">
                         <Layout size={16} />
                       </div>
                       <div>
@@ -66,7 +66,7 @@ const SearchPage: React.FC = () => {
                 <div className="space-y-2">
                   {results.messages.map(msg => (
                     <div key={msg.id} className="glass-card p-4 flex items-center gap-4 hover:bg-bg-hover cursor-pointer border border-border-default hover:border-accent-purple/30 transition-all">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-white/10 text-gray-300 flex items-center justify-center shrink-0">
                         <MessageSquare size={16} />
                       </div>
                       <div>

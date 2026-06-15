@@ -257,4 +257,81 @@ const handleWorkflowRunEvent = async (projectId: string, payload: any) => {
 };
 
 // Helper import for OR conditions
-import { or } from 'drizzle-orm';
+import { or, desc } from 'drizzle-orm';
+
+// ─── GET COMMITS FOR PROJECT ─────────────────────────────────────────────────
+// GET /api/workspaces/:slug/projects/:key/github/commits
+export const getGithubCommits = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { projectId } = req.params as Record<string, string>;
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
+
+    const commits = await db
+      .select({
+        id: githubCommits.id,
+        commitSha: githubCommits.commitSha,
+        messageHeadline: githubCommits.messageHeadline,
+        authorName: githubCommits.authorName,
+        authorGithubLogin: githubCommits.authorGithubLogin,
+        committedAt: githubCommits.committedAt,
+        branchName: githubCommits.branchName,
+        url: githubCommits.url,
+        taskId: githubCommits.taskId,
+        taskKey: tasks.taskKey,
+      })
+      .from(githubCommits)
+      .leftJoin(tasks, eq(githubCommits.taskId, tasks.taskId))
+      .where(eq(githubCommits.projectId, projectId))
+      .orderBy(desc(githubCommits.committedAt))
+      .limit(limit);
+
+    res.json({ commits });
+  } catch (err) {
+    console.error('Get GitHub commits error:', err);
+    res.status(500).json({ error: 'Server error fetching commits.' });
+  }
+};
+
+// ─── GET CI RUNS FOR PROJECT ─────────────────────────────────────────────────
+// GET /api/workspaces/:slug/projects/:key/github/ci
+export const getGithubCiRuns = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { projectId } = req.params as Record<string, string>;
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
+
+    const runs = await db
+      .select()
+      .from(githubCiStatus)
+      .where(eq(githubCiStatus.projectId, projectId))
+      .orderBy(desc(githubCiStatus.triggeredAt))
+      .limit(limit);
+
+    res.json({ runs });
+  } catch (err) {
+    console.error('Get GitHub CI runs error:', err);
+    res.status(500).json({ error: 'Server error fetching CI runs.' });
+  }
+};
+
+// ─── DISCONNECT GITHUB REPO ─────────────────────────────────────────────────
+// DELETE /api/workspaces/:slug/projects/:key/github/disconnect
+export const disconnectGithubRepo = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { projectId } = req.params as Record<string, string>;
+
+    const [deleted] = await db
+      .delete(githubConnections)
+      .where(eq(githubConnections.projectId, projectId))
+      .returning({ connectionId: githubConnections.connectionId });
+
+    if (!deleted) {
+      res.status(404).json({ error: 'No GitHub connection found for this project.' });
+      return;
+    }
+
+    res.json({ message: 'GitHub repository disconnected' });
+  } catch (err) {
+    console.error('Disconnect GitHub error:', err);
+    res.status(500).json({ error: 'Server error disconnecting GitHub repo.' });
+  }
+};

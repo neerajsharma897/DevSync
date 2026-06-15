@@ -6,12 +6,19 @@ import {
   listProjects,
   getProject,
   updateProject,
+  archiveProject,
+  listProjectMembers,
   addProjectMember,
+  updateProjectMemberRole,
   removeProjectMember,
 } from './projects.controller.js';
+import { resolveProjectKey } from '../../middleware/slugs.js';
 
-// Mounted at /api/workspaces/:workspaceId/projects
+// Mounted at /api/workspaces/:slug/projects
 const router = Router({ mergeParams: true });
+
+// Register param resolver for key
+router.param('key', resolveProjectKey);
 
 // All project routes require auth + workspace membership
 router.use(requireAuth);
@@ -22,9 +29,12 @@ router.post('/', createProject);
 router.get('/', listProjects);
 router.get('/:key', getProject);
 router.patch('/:key', updateProject);
+router.patch('/:key/archive', archiveProject);
 
 // ─── Project Member Management ───────────────────────────────────────────────
+router.get('/:key/members', listProjectMembers);
 router.post('/:key/members', addProjectMember);
+router.put('/:key/members/:userId', updateProjectMemberRole);
 router.delete('/:key/members/:userId', removeProjectMember);
 
 export default router;

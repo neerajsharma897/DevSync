@@ -153,7 +153,7 @@ const ProjectListPage: React.FC = () => {
                   </span>
                   <span className="text-xs text-text-muted">·</span>
                   <span className="flex items-center gap-1 text-xs text-text-secondary">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
                     Active
                   </span>
                 </div>

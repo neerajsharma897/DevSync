@@ -46,7 +46,7 @@ const BacklogView: React.FC = () => {
                   <div className={`w-2 h-2 rounded-full shrink-0 ${
                     task.priority === 'urgent' ? 'bg-red-500' :
                     task.priority === 'high' ? 'bg-amber-500' :
-                    task.priority === 'medium' ? 'bg-blue-500' : 'bg-text-muted'
+                    task.priority === 'medium' ? 'bg-white' : 'bg-text-muted'
                   }`} />
                   
                   <span className="text-xs font-mono text-text-secondary w-16">{task.taskKey}</span>
@@ -67,8 +67,8 @@ const BacklogView: React.FC = () => {
                     )}
                     
                     <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md border ${
-                      task.status === 'done' ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10' :
-                      task.status === 'in_progress' ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' :
+                      task.status === 'done' ? 'border-white/30 text-gray-300 bg-white/10' :
+                      task.status === 'in_progress' ? 'border-white/30 text-gray-300 bg-white/10' :
                       'border-border-light text-text-secondary bg-bg-tertiary'
                     }`}>
                       {task.status.replace('_', ' ')}

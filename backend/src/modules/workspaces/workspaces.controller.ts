@@ -82,6 +82,7 @@ export const listWorkspaces = async (req: Request, res: Response): Promise<void>
         ownerId: workspaces.ownerId,
         createdAt: workspaces.createdAt,
         role: workspaceMembers.role,
+        state: workspaceMembers.state,
         joinedAt: workspaceMembers.joinedAt,
       })
       .from(workspaceMembers)
@@ -89,7 +90,6 @@ export const listWorkspaces = async (req: Request, res: Response): Promise<void>
       .where(
         and(
           eq(workspaceMembers.userId, userId),
-          eq(workspaceMembers.state, 'active'),
           isNull(workspaces.deletedAt)
         )
       );
@@ -140,6 +140,36 @@ export const getWorkspace = async (req: Request, res: Response): Promise<void> =
   } catch (err) {
     console.error('Get workspace error:', err);
     res.status(500).json({ error: 'Server error fetching workspace.' });
+  }
+};
+
+// ─── LIST WORKSPACE MEMBERS ─────────────────────────────────────────────────
+// GET /api/workspaces/:slug/members
+export const listWorkspaceMembers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { workspaceId } = req.params as Record<string, string>;
+
+    const members = await db
+      .select({
+        id: workspaceMembers.id,
+        userId: workspaceMembers.userId,
+        role: workspaceMembers.role,
+        state: workspaceMembers.state,
+        joinedAt: workspaceMembers.joinedAt,
+        fullName: users.fullName,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        presence: users.presence,
+      })
+      .from(workspaceMembers)
+      .innerJoin(users, eq(workspaceMembers.userId, users.userId))
+      .where(eq(workspaceMembers.workspaceId, workspaceId));
+
+    res.json({ members });
+  } catch (err) {
+    console.error('List workspace members error:', err);
+    res.status(500).json({ error: 'Server error listing workspace members.' });
   }
 };
 
@@ -261,13 +291,44 @@ export const inviteMember = async (req: Request, res: Response): Promise<void> =
       userId: targetUser.userId,
       role: memberRole,
       invitedBy: inviterId,
-      state: 'active',
+      state: 'invited', // Changed from active to invited
     });
 
     res.status(201).json({ message: 'Member invited successfully', user: targetUser });
   } catch (err) {
     console.error('Invite member error:', err);
     res.status(500).json({ error: 'Server error inviting member.' });
+  }
+};
+
+// ─── ACCEPT INVITE ───────────────────────────────────────────────────────────
+// POST /api/workspaces/:workspaceId/invites/accept
+export const acceptInvite = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { workspaceId } = req.params as Record<string, string>;
+    const currentUserId = req.user!.userId;
+
+    const [updated] = await db
+      .update(workspaceMembers)
+      .set({ state: 'active', joinedAt: new Date() })
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, workspaceId),
+          eq(workspaceMembers.userId, currentUserId),
+          eq(workspaceMembers.state, 'invited')
+        )
+      )
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: 'Pending invite not found.' });
+      return;
+    }
+
+    res.json({ message: 'Invite accepted', member: updated });
+  } catch (err) {
+    console.error('Accept invite error:', err);
+    res.status(500).json({ error: 'Server error accepting invite.' });
   }
 };
 

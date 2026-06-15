@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuthStore } from '../../store/useAuthStore';
+import { useAuthStore } from '../../store/auth.js';
 
 export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, isInitializing, checkAuth } = useAuthStore();
@@ -13,7 +13,7 @@ export const AuthGuard = ({ children }: { children: React.ReactNode }) => {
   if (isInitializing) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gray-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-white border-t-transparent"></div>
       </div>
     );
   }
@@ -36,7 +36,7 @@ export const GuestGuard = ({ children }: { children: React.ReactNode }) => {
   if (isInitializing) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gray-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-white border-t-transparent"></div>
       </div>
     );
   }

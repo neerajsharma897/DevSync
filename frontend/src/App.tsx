@@ -1,53 +1,92 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import AppLayout from './layouts/AppLayout';
-import DashboardPage from './pages/DashboardPage';
-import ProjectPage from './pages/ProjectPage';
-import ChatPage from './pages/ChatPage';
-import { ProfilePage, AdminPage, NotFoundPage } from './pages/OtherPages';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import OAuthCallbackPage from './pages/OAuthCallbackPage';
-import WorkspacePickerPage from './pages/WorkspacePickerPage';
-import InviteAcceptancePage from './pages/InviteAcceptancePage';
-import WorkspaceMembersPage from './pages/WorkspaceMembersPage';
-import WorkspaceSettingsPage from './pages/WorkspaceSettingsPage';
-import ProjectListPage from './pages/ProjectListPage';
-import NotificationsPage from './pages/NotificationsPage';
-import SearchPage from './pages/SearchPage';
-import { AuthGuard, GuestGuard } from './components/auth/AuthGuard';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthGuard, GuestGuard } from './components/auth/AuthGuard.js';
+import {
+  LandingPage,
+  LoginPage,
+  RegisterPage,
+  OAuthCallbackPage,
+  WorkspaceList,
+  InviteAcceptancePage,
+  WorkspaceLayout,
+  WorkspaceHome,
+  WorkspaceMembers,
+  WorkspaceSettings,
+  ChannelPage,
+  ProjectList,
+  CreateProjectPage,
+  ProjectLayout,
+  BoardPage,
+  BacklogPage,
+  TaskDetailPage,
+  SprintList,
+  ActiveSprintBoard,
+  ProjectMembers,
+  ProjectSettings,
+  GitHubIntegration,
+  NotificationsInbox,
+  GlobalSearchResults
+} from './pages/index.js';
 
 function App() {
   return (
-    <Router>
+    <BrowserRouter>
       <Routes>
-        {/* Auth Routes */}
+        {/* --- Auth & Public Screens (3 + Landing) --- */}
+        <Route path="/" element={<LandingPage />} />
+        
         <Route path="/login" element={<GuestGuard><LoginPage /></GuestGuard>} />
         <Route path="/register" element={<GuestGuard><RegisterPage /></GuestGuard>} />
+        
+        {/* --- OAuth Callback --- */}
         <Route path="/auth/callback" element={<OAuthCallbackPage />} />
-        <Route path="/invites/:inviteId" element={<InviteAcceptancePage />} />
-        
-        {/* Workspace Picker Route */}
-        <Route path="/workspaces" element={<AuthGuard><WorkspacePickerPage /></AuthGuard>} />
-        
-        {/* App Routes */}
-        <Route path="/" element={<AuthGuard><AppLayout /></AuthGuard>}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="members" element={<WorkspaceMembersPage />} />
-          <Route path="settings" element={<WorkspaceSettingsPage />} />
-          <Route path="projects" element={<ProjectListPage />} />
-          <Route path="projects/:id/*" element={<ProjectPage />} />
-          <Route path="chat" element={<ChatPage />} />
-          <Route path="chat/:id" element={<ChatPage />} />
-          <Route path="search" element={<SearchPage />} />
-          <Route path="notifications" element={<NotificationsPage />} />
-          <Route path="profile" element={<ProfilePage />} />
-          <Route path="admin" element={<AdminPage />} />
+
+        {/* --- Invite Acceptance (Standalone outside shell) --- */}
+        <Route path="/invite/:inviteToken" element={<AuthGuard><InviteAcceptancePage /></AuthGuard>} />
+
+        {/* --- Workspace Picker (Hub) --- */}
+        <Route path="/workspaces" element={<AuthGuard><WorkspaceList /></AuthGuard>} />
+
+        {/* --- Main App Shell (1 Persistent Layout) --- */}
+        <Route path="/w/:slug" element={<AuthGuard><WorkspaceLayout /></AuthGuard>}>
+          
+          {/* Workspace Level Screens (3) */}
+          <Route index element={<WorkspaceHome />} />
+          <Route path="members" element={<WorkspaceMembers />} />
+          <Route path="settings" element={<WorkspaceSettings />} />
+
+          {/* Global Features (2) */}
+          <Route path="notifications" element={<NotificationsInbox />} />
+          <Route path="search" element={<GlobalSearchResults />} />
+
+          {/* Messaging Screens (1 + Modal for New DM) */}
+          <Route path="channels/:channelId" element={<ChannelPage />} />
+
+          {/* Project Screens (2) */}
+          <Route path="projects" element={<ProjectList />} />
+          <Route path="projects/new" element={<CreateProjectPage />} />
+
+          {/* Core Project Views (5) & Management (3) */}
+          <Route path="projects/:key" element={<ProjectLayout />}>
+            {/* The ProjectLayout maps the header/tabs. The nested routes form the content */}
+            
+            <Route index element={<BoardPage />} /> {/* 1. Kanban Board */}
+            <Route path="backlog" element={<BacklogPage />} /> {/* 2. Backlog */}
+            <Route path="tasks/:taskKey" element={<TaskDetailPage />} /> {/* 3. Task Detail (Can be overlay, mapped here for deep linking) */}
+            
+            <Route path="sprints" element={<SprintList />} /> {/* 4. Sprint List */}
+            <Route path="sprints/active" element={<ActiveSprintBoard />} /> {/* 5. Active Sprint Board */}
+            
+            <Route path="members" element={<ProjectMembers />} /> {/* 6. Project Members */}
+            <Route path="settings" element={<ProjectSettings />} /> {/* 7. Project Settings */}
+            <Route path="github" element={<GitHubIntegration />} /> {/* 8. GitHub Integration */}
+          </Route>
         </Route>
 
-        <Route path="*" element={<NotFoundPage />} />
+        {/* Catch-all 404 */}
+        <Route path="*" element={<Navigate to="/workspaces" replace />} />
       </Routes>
-    </Router>
+    </BrowserRouter>
   );
 }
 

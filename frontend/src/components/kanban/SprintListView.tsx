@@ -70,8 +70,8 @@ const SprintListView: React.FC = () => {
                   <div className="flex items-center gap-3 mb-1">
                     <h3 className="font-bold text-lg">{sprint.name}</h3>
                     <span className={`text-[10px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-full border ${
-                      sprint.status === 'active' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
-                      sprint.status === 'closed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                      sprint.status === 'active' ? 'bg-white/10 text-gray-300 border-white/30' :
+                      sprint.status === 'closed' ? 'bg-white/10 text-gray-300 border-white/30' :
                       'bg-bg-tertiary text-text-muted border-border-default'
                     }`}>
                       {sprint.status}
@@ -86,7 +86,7 @@ const SprintListView: React.FC = () => {
                       onClick={() => handleStartSprint(sprint.id)}
                       className="bg-bg-tertiary hover:bg-bg-hover text-text-primary px-4 py-1.5 rounded-lg text-sm font-medium border border-border-default flex items-center gap-2 transition-colors"
                     >
-                      <Play size={14} className="text-blue-400" /> Start Sprint
+                      <Play size={14} className="text-gray-300" /> Start Sprint
                     </button>
                   )}
                   {canManage && sprint.status === 'active' && (
@@ -94,7 +94,7 @@ const SprintListView: React.FC = () => {
                       onClick={() => handleCompleteSprint(sprint.id)}
                       className="bg-bg-tertiary hover:bg-bg-hover text-text-primary px-4 py-1.5 rounded-lg text-sm font-medium border border-border-default flex items-center gap-2 transition-colors"
                     >
-                      <CheckCircle2 size={14} className="text-emerald-400" /> Complete Sprint
+                      <CheckCircle2 size={14} className="text-gray-300" /> Complete Sprint
                     </button>
                   )}
                   <button className="text-text-muted hover:text-white p-1">

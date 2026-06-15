@@ -77,7 +77,7 @@ const Sidebar: React.FC = () => {
                   }`
                 }
               >
-                <div className={`w-2 h-2 rounded-full ${proj.status === 'active' ? 'bg-green-500' : 'bg-white'}`}></div>
+                <div className={`w-2 h-2 rounded-full ${proj.status === 'active' ? 'bg-white' : 'bg-white'}`}></div>
                 <span className="truncate">{proj.name}</span>
               </NavLink>
             ))}

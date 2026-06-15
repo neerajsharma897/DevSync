@@ -235,3 +235,72 @@ export const deleteSprint = async (req: Request, res: Response): Promise<void> =
     res.status(500).json({ error: 'Server error deleting sprint.' });
   }
 };
+
+// ─── ADD TASK TO SPRINT ──────────────────────────────────────────────────────
+// POST /api/workspaces/:slug/projects/:key/sprints/:sprintId/tasks
+export const addTaskToSprint = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sprintId } = req.params as Record<string, string>;
+    const { taskId } = req.body;
+
+    if (!taskId) {
+      res.status(400).json({ error: 'taskId is required.' });
+      return;
+    }
+
+    // Verify the task exists
+    const [task] = await db
+      .select({ taskId: tasks.taskId })
+      .from(tasks)
+      .where(eq(tasks.taskId, taskId))
+      .limit(1);
+
+    if (!task) {
+      res.status(404).json({ error: 'Task not found.' });
+      return;
+    }
+
+    // Add to sprint_tasks junction and update task.sprint_id
+    await db.transaction(async (tx) => {
+      await tx.insert(sprintTasks).values({
+        sprintId,
+        taskId,
+        wasCompletedInSprint: false,
+      }).onConflictDoNothing();
+
+      await tx
+        .update(tasks)
+        .set({ sprintId, updatedAt: new Date() })
+        .where(eq(tasks.taskId, taskId));
+    });
+
+    res.status(201).json({ message: 'Task added to sprint' });
+  } catch (err) {
+    console.error('Add task to sprint error:', err);
+    res.status(500).json({ error: 'Server error adding task to sprint.' });
+  }
+};
+
+// ─── REMOVE TASK FROM SPRINT ─────────────────────────────────────────────────
+// DELETE /api/workspaces/:slug/projects/:key/sprints/:sprintId/tasks/:taskId
+export const removeTaskFromSprint = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sprintId, taskId } = req.params as Record<string, string>;
+
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(sprintTasks)
+        .where(and(eq(sprintTasks.sprintId, sprintId), eq(sprintTasks.taskId, taskId)));
+
+      await tx
+        .update(tasks)
+        .set({ sprintId: null, updatedAt: new Date() })
+        .where(eq(tasks.taskId, taskId));
+    });
+
+    res.json({ message: 'Task removed from sprint' });
+  } catch (err) {
+    console.error('Remove task from sprint error:', err);
+    res.status(500).json({ error: 'Server error removing task from sprint.' });
+  }
+};

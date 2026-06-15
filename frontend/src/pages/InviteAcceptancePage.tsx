@@ -52,7 +52,7 @@ const InviteAcceptancePage: React.FC = () => {
 
         {status === 'success' && (
           <div className="py-8">
-            <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-6">
+            <div className="w-16 h-16 bg-white/20 text-gray-300 rounded-full flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 size={32} />
             </div>
             <h2 className="text-2xl font-bold mb-2">Invite Accepted!</h2>

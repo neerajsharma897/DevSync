@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../config/db.js';
-import { workspaceMembers } from '../db/schema/workspaces.js';
-import { projectMembers } from '../db/schema/projects.js';
-import { and, eq, inArray } from 'drizzle-orm';
+import { workspaces, workspaceMembers } from '../db/schema/workspaces.js';
+import { projects, projectMembers } from '../db/schema/projects.js';
+import { and, eq } from 'drizzle-orm';
 
 // Extend Express Request interface to store roles context
 declare global {
@@ -22,15 +22,29 @@ export const requireWorkspaceRole = (allowedRoles: ('owner' | 'admin' | 'member'
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user?.userId;
-      const workspaceId = req.params.workspaceId || req.body.workspaceId || req.query.workspaceId;
+      let workspaceId = req.params.workspaceId || req.body.workspaceId || req.query.workspaceId;
+      const slug = req.params.slug || req.body.slug || req.query.slug;
 
       if (!userId) {
         res.status(401).json({ error: 'Unauthorized. Auth context missing.' });
         return;
       }
 
+      if (!workspaceId && slug) {
+        const [ws] = await db
+          .select({ workspaceId: workspaces.workspaceId })
+          .from(workspaces)
+          .where(eq(workspaces.slug, slug as string))
+          .limit(1);
+        
+        if (ws) {
+          workspaceId = ws.workspaceId;
+          req.params.workspaceId = workspaceId; // inject for later controllers
+        }
+      }
+
       if (!workspaceId || typeof workspaceId !== 'string') {
-        res.status(400).json({ error: 'workspaceId is required for this action.' });
+        res.status(400).json({ error: 'workspaceId or slug is required for this action.' });
         return;
       }
 
@@ -61,10 +75,12 @@ export const requireWorkspaceRole = (allowedRoles: ('owner' | 'admin' | 'member'
 
       // Attach workspace role to request context
       req.workspaceRole = membership.role;
-      next();
     } catch (err) {
+      console.error('requireWorkspaceRole error:', err);
       res.status(500).json({ error: 'Error validating workspace membership role.' });
+      return;
     }
+    next();
   };
 };
 
@@ -76,15 +92,45 @@ export const requireProjectRole = (allowedRoles: ('project_admin' | 'developer' 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user?.userId;
-      const projectId = req.params.projectId || req.body.projectId || req.query.projectId;
+      let projectId = req.params.projectId || req.body.projectId || req.query.projectId;
+      const key = req.params.key || req.body.key || req.query.key;
+      const slug = req.params.slug || req.body.slug || req.query.slug;
 
       if (!userId) {
         res.status(401).json({ error: 'Unauthorized. Auth context missing.' });
         return;
       }
 
+      if (!projectId && key && slug) {
+        // Resolve slug to workspaceId, then resolve key to projectId
+        const [ws] = await db
+          .select({ workspaceId: workspaces.workspaceId })
+          .from(workspaces)
+          .where(eq(workspaces.slug, slug as string))
+          .limit(1);
+
+        if (ws) {
+          req.params.workspaceId = ws.workspaceId;
+          const [proj] = await db
+            .select({ projectId: projects.projectId })
+            .from(projects)
+            .where(
+              and(
+                eq(projects.workspaceId, ws.workspaceId),
+                eq(projects.key, key as string)
+              )
+            )
+            .limit(1);
+          
+          if (proj) {
+            projectId = proj.projectId;
+            req.params.projectId = projectId; // inject for later controllers
+          }
+        }
+      }
+
       if (!projectId || typeof projectId !== 'string') {
-        res.status(400).json({ error: 'projectId is required for this action.' });
+        res.status(400).json({ error: 'projectId or (slug+key) is required for this action.' });
         return;
       }
 
@@ -114,9 +160,11 @@ export const requireProjectRole = (allowedRoles: ('project_admin' | 'developer' 
 
       // Attach project role to request context
       req.projectRole = membership.role;
-      next();
     } catch (err) {
+      console.error('requireProjectRole error:', err);
       res.status(500).json({ error: 'Error validating project membership role.' });
+      return;
     }
+    next();
   };
 };

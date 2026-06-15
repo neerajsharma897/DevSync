@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { apiFetch } from '../lib/api';
-import { useAuthStore } from '../store/useAuthStore';
+import { supabase } from '../../lib/supabase.js';
+import { apiFetch } from '../../lib/api.js';
+import { useAuthStore } from '../../store/auth.js';
 import { Loader2 } from 'lucide-react';
 
-export default function OAuthCallbackPage() {
+export const OAuthCallbackPage = () => {
   const navigate = useNavigate();
   const { checkAuth } = useAuthStore();
   const [error, setError] = useState<string | null>(null);

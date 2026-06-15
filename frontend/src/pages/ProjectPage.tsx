@@ -50,7 +50,7 @@ const ProjectPage: React.FC = () => {
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold">{activeProject?.name || 'DevSync Platform'}</h1>
                 <span className="px-2 py-0.5 rounded-md bg-white/5 text-white text-[10px] font-bold border border-white/10 flex items-center gap-1">
-                   <div className={`w-1 h-1 rounded-full ${activeProject?.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-text-muted'}`} />
+                   <div className={`w-1 h-1 rounded-full ${activeProject?.status === 'active' ? 'bg-white animate-pulse' : 'bg-text-muted'}`} />
                    {activeProject?.status || 'Active'}
                 </span>
               </div>

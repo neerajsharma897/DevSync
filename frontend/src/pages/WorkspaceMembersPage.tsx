@@ -202,8 +202,8 @@ const WorkspaceMembersPage: React.FC = () => {
                     </td>
                     <td className="px-6 py-4">
                       {member.state === 'active' ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded">
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-300 bg-white/10 px-2 py-1 rounded">
+                          <div className="w-1.5 h-1.5 rounded-full bg-gray-300"></div>
                           Active
                         </span>
                       ) : (
