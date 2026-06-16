@@ -1,23 +1,40 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, useParams, NavLink, useNavigate } from 'react-router-dom';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
-import { Hash, Lock, Search, Bell, Settings, Plus, FolderKanban, Loader2, Home, X } from 'lucide-react';
+import { useAuthStore } from '../../store/auth.js';
+import { Hash, Lock, Search, Bell, Settings, Plus, FolderKanban, Loader2, Home, X, MessageCircle, LogOut, ChevronDown as ChevronDownIcon, User } from 'lucide-react';
 import clsx from 'clsx';
 
 export const WorkspaceLayout = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { name, projects, channels, isLoading, error, fetchWorkspaceData } = useCurrentWorkspaceStore();
+  const { user, logout } = useAuthStore();
+  const { name, projects, channels, isLoading, error, myRole, isAdmin, isOwner, fetchWorkspaceData } = useCurrentWorkspaceStore();
   const [showChannelModal, setShowChannelModal] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelType, setNewChannelType] = useState('public');
+  const [isDefaultChannel, setIsDefaultChannel] = useState(false);
+  const [isAnnouncementOnly, setIsAnnouncementOnly] = useState(false);
   const [isCreatingChannel, setIsCreatingChannel] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (slug) {
       fetchWorkspaceData(slug);
     }
   }, [slug, fetchWorkspaceData]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowUserDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   const handleCreateChannel = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,16 +44,28 @@ export const WorkspaceLayout = () => {
       const { apiFetch } = await import('../../lib/api.js');
       await apiFetch(`/workspaces/${slug}/channels`, {
         method: 'POST',
-        body: JSON.stringify({ name: newChannelName, type: newChannelType })
+        body: JSON.stringify({ 
+          name: newChannelName, 
+          type: newChannelType,
+          isDefault: isDefaultChannel,
+          isAnnouncementOnly: isAnnouncementOnly
+        })
       });
       setShowChannelModal(false);
       setNewChannelName('');
+      setIsDefaultChannel(false);
+      setIsAnnouncementOnly(false);
       fetchWorkspaceData(slug);
     } catch (err: any) {
       alert(err.message || 'Failed to create channel.');
     } finally {
       setIsCreatingChannel(false);
     }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
   };
 
   if (isLoading) {
@@ -66,9 +95,12 @@ export const WorkspaceLayout = () => {
       <aside className="w-64 bg-gray-900 border-r border-gray-800/60 flex flex-col flex-shrink-0">
         
         {/* Workspace Header */}
-        <div className="h-14 px-4 flex items-center justify-between border-b border-gray-800/60 shadow-sm hover:bg-gray-800/50 cursor-pointer transition-colors">
+        <div 
+          className="h-14 px-4 flex items-center justify-between border-b border-gray-800/60 shadow-sm hover:bg-gray-800/50 cursor-pointer transition-colors"
+          onClick={() => navigate(`/w/${slug}`)}
+        >
           <h1 className="font-bold text-white truncate text-lg">{name}</h1>
-          <ChevronDown className="w-4 h-4 text-gray-400" />
+          <ChevronDownIcon className="w-4 h-4 text-gray-400" />
         </div>
 
         {/* Scrollable Nav */}
@@ -98,18 +130,21 @@ export const WorkspaceLayout = () => {
           <div>
             <div className="px-5 mb-1.5 flex items-center justify-between group cursor-pointer">
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider group-hover:text-gray-400 transition-colors">Channels</span>
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowChannelModal(true);
-                }}
-                className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-300 transition-all"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
+              {/* Only admin+ can create channels */}
+              {isAdmin() && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowChannelModal(true);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-300 transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <div className="px-3 space-y-0.5">
-              {channels.map((ch) => (
+              {channels.filter(c => !c.projectId).map((ch) => (
                 <NavLink
                   key={ch.channelId}
                   to={`/w/${slug}/channels/${ch.channelId}`}
@@ -118,7 +153,7 @@ export const WorkspaceLayout = () => {
                     isActive ? "bg-white/10 text-gray-300 font-medium" : "text-gray-400 hover:bg-gray-800/60 hover:text-gray-200"
                   )}
                 >
-                  {ch.isPrivate ? (
+                  {ch.type === 'private' ? (
                     <Lock className="w-3.5 h-3.5 mr-2 opacity-60" />
                   ) : (
                     <Hash className="w-4 h-4 mr-2 opacity-60" />
@@ -133,53 +168,147 @@ export const WorkspaceLayout = () => {
           <div>
             <div className="px-5 mb-1.5 flex items-center justify-between group cursor-pointer" onClick={() => navigate(`/w/${slug}/projects`)}>
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider group-hover:text-gray-400 transition-colors">Projects</span>
-              <button onClick={(e) => { e.stopPropagation(); navigate(`/w/${slug}/projects/new`); }} className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-300 transition-all">
-                <Plus className="w-3.5 h-3.5" />
-              </button>
+              {/* Only admin+ can create projects */}
+              {isAdmin() && (
+                <button onClick={(e) => { e.stopPropagation(); navigate(`/w/${slug}/projects/new`); }} className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-300 transition-all">
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
             <div className="px-3 space-y-0.5">
               {projects.map((proj) => (
-                <NavLink
-                  key={proj.projectId}
-                  to={`/w/${slug}/projects/${proj.key}`}
-                  className={({ isActive }) => clsx(
-                    "flex items-center px-2 py-1.5 rounded-md text-[14px] transition-colors",
-                    isActive ? "bg-white/10 text-gray-300 font-medium" : "text-gray-400 hover:bg-gray-800/60 hover:text-gray-200"
+                <div key={proj.projectId}>
+                  <NavLink
+                    to={`/w/${slug}/projects/${proj.key}`}
+                    className={({ isActive }) => clsx(
+                      "flex items-center px-2 py-1.5 rounded-md text-[14px] transition-colors",
+                      isActive ? "bg-white/10 text-gray-300 font-medium" : "text-gray-400 hover:bg-gray-800/60 hover:text-gray-200"
+                    )}
+                  >
+                    <FolderKanban className="w-4 h-4 mr-2.5 opacity-60" />
+                    <span className="truncate">{proj.name}</span>
+                  </NavLink>
+                  {/* Nested Project Channels */}
+                  {channels.filter(c => c.projectId === proj.projectId).length > 0 && (
+                    <div className="pl-6 pr-2 py-1 space-y-0.5">
+                      {channels.filter(c => c.projectId === proj.projectId).map((ch) => (
+                        <NavLink
+                          key={ch.channelId}
+                          to={`/w/${slug}/channels/${ch.channelId}`}
+                          className={({ isActive }) => clsx(
+                            "flex items-center px-2 py-1 rounded-md text-[13px] transition-colors",
+                            isActive ? "bg-white/10 text-gray-300 font-medium" : "text-gray-500 hover:bg-gray-800/60 hover:text-gray-300"
+                          )}
+                        >
+                          {ch.type === 'private' ? (
+                            <Lock className="w-3.5 h-3.5 mr-2 opacity-60" />
+                          ) : (
+                            <Hash className="w-3.5 h-3.5 mr-2 opacity-60" />
+                          )}
+                          <span className="truncate">{ch.name}</span>
+                        </NavLink>
+                      ))}
+                    </div>
                   )}
-                >
-                  <FolderKanban className="w-4 h-4 mr-2.5 opacity-60" />
-                  <span className="truncate">{proj.name}</span>
-                </NavLink>
+                </div>
               ))}
             </div>
           </div>
 
+          {/* Direct Messages Section */}
+          <div>
+            <div className="px-5 mb-1.5 flex items-center justify-between group cursor-pointer">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider group-hover:text-gray-400 transition-colors">Direct Messages</span>
+              <button className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-300 transition-all">
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="px-3">
+              <p className="text-xs text-gray-600 px-2 py-2 italic">No conversations yet</p>
+            </div>
+          </div>
+
         </div>
 
-        {/* User Profile Minimenu */}
-        <div className="p-4 border-t border-gray-800/60" onClick={() => navigate(`/w/${slug}/settings`)}>
-          <div className="flex items-center justify-between cursor-pointer group">
-            <div className="flex items-center space-x-2">
-              <div className="w-7 h-7 rounded bg-gradient-to-tr from-white to-white border border-gray-700"></div>
-              <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">Workspace Settings</span>
+        {/* Workspace Settings — only visible to owner */}
+        {isOwner() && (
+          <div className="p-4 border-t border-gray-800/60" onClick={() => navigate(`/w/${slug}/settings`)}>
+            <div className="flex items-center justify-between cursor-pointer group">
+              <div className="flex items-center space-x-2">
+                <div className="w-7 h-7 rounded bg-gradient-to-tr from-white to-white border border-gray-700"></div>
+                <span className="text-sm font-medium text-gray-300 group-hover:text-white transition-colors">Workspace Settings</span>
+              </div>
+              <Settings className="w-4 h-4 text-gray-500 group-hover:text-gray-300" />
             </div>
-            <Settings className="w-4 h-4 text-gray-500 group-hover:text-gray-300" />
           </div>
-        </div>
+        )}
       </aside>
 
       {/* ─── MAIN CONTENT OUTLET ────────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0 bg-gray-950 relative">
         {/* Top Navbar / Utility Bar */}
         <header className="h-14 px-6 flex items-center justify-between border-b border-gray-800/60 bg-gray-950 shrink-0">
-          <div className="flex items-center text-sm font-medium text-gray-400">
-            {/* Breadcrumb or context can go here */}
+          {/* Search */}
+          <div className="flex items-center flex-1">
+            <div className="relative max-w-md w-full" onClick={() => navigate(`/w/${slug}/search`)}>
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+              <input 
+                type="text" 
+                placeholder="Search tasks, messages..." 
+                className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-9 pr-4 py-1.5 text-sm text-gray-400 cursor-pointer focus:outline-none"
+                readOnly
+              />
+            </div>
           </div>
+
           <div className="flex items-center space-x-4">
+            {/* Notifications Bell */}
             <button onClick={() => navigate(`/w/${slug}/notifications`)} className="text-gray-400 hover:text-white transition-colors relative">
               <Bell className="w-5 h-5" />
               <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-gray-950"></span>
             </button>
+
+            {/* User Dropdown */}
+            <div className="relative" ref={dropdownRef}>
+              <button 
+                onClick={() => setShowUserDropdown(!showUserDropdown)}
+                className="flex items-center space-x-2 px-2 py-1 rounded-lg hover:bg-gray-800/50 transition-colors"
+              >
+                <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-gray-600 to-gray-500 flex items-center justify-center text-white text-xs font-bold border border-gray-700">
+                  {user?.fullName?.[0]?.toUpperCase() || 'U'}
+                </div>
+                <span className="text-sm font-medium text-gray-300 hidden sm:inline">{user?.fullName?.split(' ')[0]}</span>
+                <ChevronDownIcon className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+
+              {showUserDropdown && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden">
+                  <div className="p-4 border-b border-gray-800">
+                    <p className="text-sm font-semibold text-white">{user?.fullName}</p>
+                    <p className="text-xs text-gray-500">{user?.email}</p>
+                    <span className="mt-2 inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-white/10 text-gray-300 border border-white/20">
+                      {myRole}
+                    </span>
+                  </div>
+                  {isOwner() && (
+                    <button 
+                      onClick={() => { setShowUserDropdown(false); navigate(`/w/${slug}/settings`); }}
+                      className="w-full flex items-center px-4 py-3 text-sm text-gray-300 hover:bg-gray-800/60 transition-colors"
+                    >
+                      <Settings className="w-4 h-4 mr-3 text-gray-500" />
+                      Workspace Settings
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => { setShowUserDropdown(false); handleLogout(); }}
+                    className="w-full flex items-center px-4 py-3 text-sm text-red-400 hover:bg-gray-800/60 transition-colors border-t border-gray-800"
+                  >
+                    <LogOut className="w-4 h-4 mr-3" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -225,6 +354,41 @@ export const WorkspaceLayout = () => {
                   <option value="private">Private - Invite only</option>
                 </select>
               </div>
+
+              <div className="flex flex-col space-y-3 pt-2">
+                <label className="flex items-center space-x-3 cursor-pointer group">
+                  <div className="relative flex items-center justify-center">
+                    <input 
+                      type="checkbox" 
+                      checked={isDefaultChannel}
+                      onChange={e => setIsDefaultChannel(e.target.checked)}
+                      className="peer appearance-none w-5 h-5 border border-gray-700 rounded bg-gray-950 checked:bg-emerald-500 checked:border-emerald-500 transition-all"
+                    />
+                    <svg className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">Default Channel</span>
+                    <span className="text-xs text-gray-500">New workspace members are automatically added</span>
+                  </div>
+                </label>
+
+                <label className="flex items-center space-x-3 cursor-pointer group">
+                  <div className="relative flex items-center justify-center">
+                    <input 
+                      type="checkbox" 
+                      checked={isAnnouncementOnly}
+                      onChange={e => setIsAnnouncementOnly(e.target.checked)}
+                      className="peer appearance-none w-5 h-5 border border-gray-700 rounded bg-gray-950 checked:bg-blue-500 checked:border-blue-500 transition-all"
+                    />
+                    <svg className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">Announcement Only</span>
+                    <span className="text-xs text-gray-500">Only admins and the channel creator can post messages</span>
+                  </div>
+                </label>
+              </div>
+
               <div className="pt-4 flex justify-end space-x-3">
                 <button type="button" onClick={() => setShowChannelModal(false)} className="px-4 py-2 text-gray-400 hover:text-white transition-colors font-medium">Cancel</button>
                 <button type="submit" disabled={isCreatingChannel} className="px-6 py-2 bg-white text-gray-950 hover:bg-gray-200 font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center">
@@ -240,10 +404,3 @@ export const WorkspaceLayout = () => {
     </div>
   );
 };
-
-// Simple Chevron for the header
-const ChevronDown = (props: any) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-    <path d="m6 9 6 6 6-6"/>
-  </svg>
-);

@@ -22,6 +22,7 @@ export { TaskDetailPage } from './projects/TaskDetailPage.js';
 export { SprintList } from './projects/SprintList.js';
 export { ActiveSprintBoard } from './projects/ActiveSprintBoard.js';
 export { ProjectMembers } from './projects/ProjectMembers.js';
+export { ProjectChannels } from './projects/ProjectChannels.js';
 export { ProjectSettings } from './projects/ProjectSettings.js';
 export { GitHubIntegration } from './projects/GitHubIntegration.js';
 

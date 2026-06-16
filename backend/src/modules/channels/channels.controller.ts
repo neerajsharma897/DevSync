@@ -15,7 +15,7 @@ export const createChannel = async (req: Request, res: Response): Promise<void> 
   try {
     const { workspaceId } = req.params as Record<string, string>;
     const userId = req.user!.userId;
-    const { name, description, type, projectId, isAnnouncementOnly } = req.body;
+    const { name, description, type, projectId, isAnnouncementOnly, isDefault } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Channel name is required.' });
@@ -40,6 +40,7 @@ export const createChannel = async (req: Request, res: Response): Promise<void> 
           slug,
           description: description || null,
           type: channelType,
+          isDefault: isDefault || false,
           isAnnouncementOnly: isAnnouncementOnly || false,
           createdBy: userId,
         })
@@ -189,5 +190,62 @@ export const archiveChannel = async (req: Request, res: Response): Promise<void>
   } catch (err) {
     console.error('Archive channel error:', err);
     res.status(500).json({ error: 'Server error archiving channel.' });
+  }
+};
+
+// ─── DELETE CHANNEL ──────────────────────────────────────────────────────────
+// DELETE /api/workspaces/:workspaceId/channels/:channelId
+export const deleteChannel = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { channelId } = req.params as Record<string, string>;
+
+    const [deleted] = await db
+      .delete(channels)
+      .where(eq(channels.channelId, channelId))
+      .returning();
+
+    if (!deleted) {
+      res.status(404).json({ error: 'Channel not found.' });
+      return;
+    }
+
+    res.json({ message: 'Channel deleted successfully', channel: deleted });
+  } catch (err) {
+    console.error('Delete channel error:', err);
+    res.status(500).json({ error: 'Server error deleting channel.' });
+  }
+};
+
+// ─── UPDATE CHANNEL ──────────────────────────────────────────────────────────
+// PATCH /api/workspaces/:workspaceId/channels/:channelId
+export const updateChannel = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { channelId } = req.params as Record<string, string>;
+    const { name, description } = req.body;
+
+    const updateData: any = {};
+    if (name) {
+      updateData.name = name.trim();
+      updateData.slug = channelSlug(name);
+    }
+    if (description !== undefined) {
+      updateData.description = description;
+    }
+
+    const [updated] = await db
+      .update(channels)
+      .set(updateData)
+      .where(eq(channels.channelId, channelId))
+      .returning();
+
+    if (!updated) {
+      res.status(404).json({ error: 'Channel not found.' });
+      return;
+    }
+
+    res.json({ message: 'Channel updated', channel: updated });
+  } catch (err) {
+    console.error('Update channel error:', err);
+    res.status(500).json({ error: 'Server error updating channel.' });
   }
 };

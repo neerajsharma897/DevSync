@@ -22,6 +22,7 @@ import {
   SprintList,
   ActiveSprintBoard,
   ProjectMembers,
+  ProjectChannels,
   ProjectSettings,
   GitHubIntegration,
   NotificationsInbox,
@@ -77,9 +78,10 @@ function App() {
             <Route path="sprints" element={<SprintList />} /> {/* 4. Sprint List */}
             <Route path="sprints/active" element={<ActiveSprintBoard />} /> {/* 5. Active Sprint Board */}
             
-            <Route path="members" element={<ProjectMembers />} /> {/* 6. Project Members */}
-            <Route path="settings" element={<ProjectSettings />} /> {/* 7. Project Settings */}
-            <Route path="github" element={<GitHubIntegration />} /> {/* 8. GitHub Integration */}
+            <Route path="channels" element={<ProjectChannels />} /> {/* 6. Project Channels */}
+            <Route path="members" element={<ProjectMembers />} /> {/* 7. Project Members */}
+            <Route path="settings" element={<ProjectSettings />} /> {/* 8. Project Settings */}
+            <Route path="github" element={<GitHubIntegration />} /> {/* 9. GitHub Integration */}
           </Route>
         </Route>
 

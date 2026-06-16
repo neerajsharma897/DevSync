@@ -1,11 +1,21 @@
 import React from 'react';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
-import { Activity, Hash, FolderKanban, ArrowRight, Zap } from 'lucide-react';
+import { Activity, Hash, FolderKanban, ArrowRight, Users, Shield } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
+import clsx from 'clsx';
 
 export const WorkspaceHome = () => {
   const { slug } = useParams();
-  const { name, projects, channels } = useCurrentWorkspaceStore();
+  const { name, description, projects, channels, myRole, memberCount, isAdmin, isOwner } = useCurrentWorkspaceStore();
+
+  const roleBadge = (role: string) => {
+    const colors: Record<string, string> = {
+      owner: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+      admin: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+      member: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
+    };
+    return colors[role] || colors.member;
+  };
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar p-8 bg-gray-950 font-sans">
@@ -13,97 +23,90 @@ export const WorkspaceHome = () => {
       {/* Welcome Banner */}
       <div className="bg-gradient-to-br from-gray-900 to-gray-950 border border-gray-800 rounded-2xl p-8 mb-8 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[80px] pointer-events-none"></div>
-        <h1 className="text-3xl font-extrabold text-white mb-2 relative z-10">Welcome to {name}</h1>
-        <p className="text-gray-400 relative z-10 max-w-2xl">
-          Here's what's happening in your workspace today. Jump back into your active projects or catch up on channel discussions.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-4 relative z-10">
-          <Link to={`/w/${slug}/projects`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
+        <div className="flex items-start justify-between relative z-10">
+          <div>
+            <h1 className="text-3xl font-extrabold text-white mb-2">Welcome to {name}</h1>
+            <p className="text-gray-400 max-w-2xl mb-4">
+              {description || "Here's what's happening in your workspace today. Jump back into your active projects or catch up on channel discussions."}
+            </p>
+            {/* Stats Row */}
+            <div className="flex items-center space-x-6 text-sm">
+              <span className={clsx("inline-flex items-center px-2.5 py-1 rounded-full border font-semibold text-xs uppercase tracking-wider", roleBadge(myRole))}>
+                <Shield className="w-3.5 h-3.5 mr-1.5" />
+                {myRole}
+              </span>
+              <span className="flex items-center text-gray-400">
+                <Users className="w-4 h-4 mr-1.5" />
+                {memberCount} members
+              </span>
+              <span className="flex items-center text-gray-400">
+                <FolderKanban className="w-4 h-4 mr-1.5" />
+                {projects.length} projects
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3 relative z-10">
+          <Link to={`/w/${slug}/projects`} className="px-4 py-2 bg-white hover:bg-gray-200 text-gray-950 rounded-lg text-sm font-semibold transition-colors">
             View All Projects
           </Link>
           <Link to={`/w/${slug}/notifications`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
-            View All Notifications
+            View Notifications
           </Link>
-          <Link to={`/w/${slug}/members`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
-            Manage Members
-          </Link>
-          <Link to={`/w/${slug}/settings`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
-            Workspace Settings
-          </Link>
+          {isAdmin() && (
+            <Link to={`/w/${slug}/members`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
+              Manage Members
+            </Link>
+          )}
+          {isOwner() && (
+            <Link to={`/w/${slug}/settings`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
+              Workspace Settings
+            </Link>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Quick Links Section */}
-        <div className="space-y-6">
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <div className="flex items-center space-x-2 text-gray-200 font-bold mb-4">
+        {/* Projects Section */}
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2 text-gray-200 font-bold">
               <FolderKanban className="w-5 h-5 text-gray-300" />
-              <h3>Your Projects</h3>
+              <h3>Recent Projects</h3>
             </div>
-            <div className="space-y-3">
-              {projects.slice(0, 3).map(p => (
-                <Link key={p.projectId} to={`/w/${slug}/projects/${p.key}`} className="group flex items-center justify-between p-3 bg-gray-950 border border-gray-800/80 hover:border-white/50 rounded-lg transition-colors">
-                  <span className="font-medium text-gray-300 group-hover:text-white">{p.name}</span>
-                  <ArrowRight className="w-4 h-4 text-gray-600 group-hover:text-gray-300 group-hover:translate-x-1 transition-all" />
-                </Link>
-              ))}
-              {projects.length === 0 && <p className="text-sm text-gray-500 italic">No projects yet.</p>}
-            </div>
+            <Link to={`/w/${slug}/projects`} className="text-xs text-gray-500 hover:text-white transition-colors">View all →</Link>
           </div>
-
-          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
-            <div className="flex items-center space-x-2 text-gray-200 font-bold mb-4">
-              <Hash className="w-5 h-5 text-gray-300" />
-              <h3>Recent Channels</h3>
-            </div>
-            <div className="space-y-3">
-              {channels.slice(0, 3).map(c => (
-                <Link key={c.channelId} to={`/w/${slug}/channels/${c.channelId}`} className="group flex items-center justify-between p-3 bg-gray-950 border border-gray-800/80 hover:border-white/50 rounded-lg transition-colors">
-                  <span className="font-medium text-gray-300 group-hover:text-white">#{c.name}</span>
-                  <ArrowRight className="w-4 h-4 text-gray-600 group-hover:text-gray-300 group-hover:translate-x-1 transition-all" />
-                </Link>
-              ))}
-              {channels.length === 0 && <p className="text-sm text-gray-500 italic">No channels yet.</p>}
-            </div>
+          <div className="space-y-3">
+            {projects.slice(0, 5).map(p => (
+              <Link key={p.projectId} to={`/w/${slug}/projects/${p.key}`} className="group flex items-center justify-between p-3 bg-gray-950 border border-gray-800/80 hover:border-white/50 rounded-lg transition-colors">
+                <div className="flex items-center space-x-3">
+                  <span className="text-xs font-mono bg-gray-800 text-gray-400 px-2 py-0.5 rounded">{p.key}</span>
+                  <span className="font-medium text-gray-300 group-hover:text-white">{p.name}</span>
+                </div>
+                <ArrowRight className="w-4 h-4 text-gray-600 group-hover:text-gray-300 group-hover:translate-x-1 transition-all" />
+              </Link>
+            ))}
+            {projects.length === 0 && <p className="text-sm text-gray-500 italic">No projects yet.</p>}
           </div>
         </div>
 
-        {/* Recent Activity Feed */}
-        <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-6">
-          <div className="flex items-center space-x-2 text-gray-200 font-bold mb-6">
-            <Activity className="w-5 h-5 text-gray-300" />
-            <h3>Workspace Activity</h3>
+        {/* Channels Section */}
+        <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2 text-gray-200 font-bold">
+              <Hash className="w-5 h-5 text-gray-300" />
+              <h3>Channels</h3>
+            </div>
           </div>
-          
-          <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-800 before:to-transparent">
-            {/* Fake Activity Item 1 */}
-            <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-              <div className="flex items-center justify-center w-10 h-10 rounded-full border border-gray-800 bg-gray-950 text-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10">
-                <Zap className="w-4 h-4" />
-              </div>
-              <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-gray-800 bg-gray-900/50">
-                <div className="flex items-center justify-between space-x-2 mb-1">
-                  <div className="font-bold text-gray-200">Sprint 3 Started</div>
-                  <time className="text-xs font-medium text-gray-500">2h ago</time>
-                </div>
-                <div className="text-sm text-gray-400">WebApp Overhaul sprint is now active.</div>
-              </div>
-            </div>
-
-            {/* Fake Activity Item 2 */}
-            <div className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-              <div className="flex items-center justify-center w-10 h-10 rounded-full border border-gray-800 bg-gray-950 text-white shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10">
-                <FolderKanban className="w-4 h-4" />
-              </div>
-              <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-xl border border-gray-800 bg-gray-900/50">
-                <div className="flex items-center justify-between space-x-2 mb-1">
-                  <div className="font-bold text-gray-200">New Project Created</div>
-                  <time className="text-xs font-medium text-gray-500">1d ago</time>
-                </div>
-                <div className="text-sm text-gray-400">Mobile App V2 was initialized.</div>
-              </div>
-            </div>
+          <div className="space-y-3">
+            {channels.slice(0, 5).map(c => (
+              <Link key={c.channelId} to={`/w/${slug}/channels/${c.channelId}`} className="group flex items-center justify-between p-3 bg-gray-950 border border-gray-800/80 hover:border-white/50 rounded-lg transition-colors">
+                <span className="font-medium text-gray-300 group-hover:text-white">#{c.name}</span>
+                <ArrowRight className="w-4 h-4 text-gray-600 group-hover:text-gray-300 group-hover:translate-x-1 transition-all" />
+              </Link>
+            ))}
+            {channels.length === 0 && <p className="text-sm text-gray-500 italic">No channels yet.</p>}
           </div>
         </div>
       </div>

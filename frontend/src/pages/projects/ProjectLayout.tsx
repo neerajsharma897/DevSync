@@ -1,15 +1,20 @@
 import React from 'react';
 import { Outlet, NavLink, useParams } from 'react-router-dom';
-import { Kanban, List, Settings, Filter, Plus } from 'lucide-react';
+import { Kanban, List, Settings, Filter, Plus, IterationCcw, Users, GitBranch, Hash } from 'lucide-react';
 import clsx from 'clsx';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 
 export const ProjectLayout = () => {
   const { slug, key } = useParams();
-  const { projects } = useCurrentWorkspaceStore();
+  const { projects, isAdmin } = useCurrentWorkspaceStore();
   
   // Find current project details from the sidebar store
   const currentProject = projects.find(p => p.key === key?.toUpperCase());
+
+  const tabClass = ({ isActive }: { isActive: boolean }) => clsx(
+    "flex items-center pb-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
+    isActive ? "border-white text-gray-300" : "border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600"
+  );
 
   return (
     <div className="flex h-full flex-col font-sans bg-gray-950">
@@ -35,43 +40,37 @@ export const ProjectLayout = () => {
             <button className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
               <Filter className="w-5 h-5" />
             </button>
-            <button className="flex items-center px-3 py-2 bg-gray-400 hover:bg-white text-white text-sm font-medium rounded-lg transition-colors">
-              <Plus className="w-4 h-4 mr-1.5" />
-              Create Task
-            </button>
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex space-x-6 mt-2">
-          <NavLink
-            to={`/w/${slug}/projects/${key}`}
-            end
-            className={({ isActive }) => clsx(
-              "flex items-center pb-3 text-sm font-medium border-b-2 transition-colors",
-              isActive ? "border-white text-gray-300" : "border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600"
-            )}
-          >
+        {/* Tab Navigation — All 7 tabs */}
+        <div className="flex space-x-6 mt-2 overflow-x-auto">
+          <NavLink to={`/w/${slug}/projects/${key}`} end className={tabClass}>
             <Kanban className="w-4 h-4 mr-2" />
             Board
           </NavLink>
-          <NavLink
-            to={`/w/${slug}/projects/${key}/backlog`}
-            className={({ isActive }) => clsx(
-              "flex items-center pb-3 text-sm font-medium border-b-2 transition-colors",
-              isActive ? "border-white text-gray-300" : "border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600"
-            )}
-          >
+          <NavLink to={`/w/${slug}/projects/${key}/backlog`} className={tabClass}>
             <List className="w-4 h-4 mr-2" />
             Backlog
           </NavLink>
-          <NavLink
-            to={`/w/${slug}/projects/${key}/settings`}
-            className={({ isActive }) => clsx(
-              "flex items-center pb-3 text-sm font-medium border-b-2 transition-colors",
-              isActive ? "border-white text-gray-300" : "border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-600"
-            )}
-          >
+          <NavLink to={`/w/${slug}/projects/${key}/sprints`} className={tabClass}>
+            <IterationCcw className="w-4 h-4 mr-2" />
+            Sprints
+          </NavLink>
+          <NavLink to={`/w/${slug}/projects/${key}/channels`} className={tabClass}>
+            <Hash className="w-4 h-4 mr-2" />
+            Channels
+          </NavLink>
+          <NavLink to={`/w/${slug}/projects/${key}/github`} className={tabClass}>
+            <GitBranch className="w-4 h-4 mr-2" />
+            GitHub
+          </NavLink>
+          <NavLink to={`/w/${slug}/projects/${key}/members`} className={tabClass}>
+            <Users className="w-4 h-4 mr-2" />
+            Members
+          </NavLink>
+          {/* Settings tab — visible to project_admin only (we fall back to workspace admin check for now) */}
+          <NavLink to={`/w/${slug}/projects/${key}/settings`} className={tabClass}>
             <Settings className="w-4 h-4 mr-2" />
             Settings
           </NavLink>

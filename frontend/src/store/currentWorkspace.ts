@@ -10,17 +10,28 @@ interface Project {
 interface Channel {
   channelId: string;
   name: string;
-  isPrivate: boolean;
+  type: string;
+  projectId?: string | null;
 }
+
+export type WorkspaceRole = 'owner' | 'admin' | 'member';
+export type ProjectRole = 'project_admin' | 'developer' | 'viewer';
 
 interface CurrentWorkspaceState {
   workspaceId: string;
   name: string;
   slug: string;
+  description: string;
+  myRole: WorkspaceRole;
+  memberCount: number;
   projects: Project[];
   channels: Channel[];
   isLoading: boolean;
   error: string | null;
+  // Helpers
+  isAdmin: () => boolean;
+  isOwner: () => boolean;
+  // Actions
   fetchWorkspaceData: (slug: string) => Promise<void>;
   createChannel: (slug: string, name: string, isPrivate: boolean) => Promise<void>;
   createProject: (slug: string, name: string, key: string, description?: string) => Promise<void>;
@@ -30,22 +41,49 @@ export const useCurrentWorkspaceStore = create<CurrentWorkspaceState>((set, get)
   workspaceId: '',
   name: '',
   slug: '',
+  description: '',
+  myRole: 'member',
+  memberCount: 0,
   projects: [],
   channels: [],
   isLoading: true,
   error: null,
 
+  isAdmin: () => {
+    const role = get().myRole;
+    return role === 'owner' || role === 'admin';
+  },
+
+  isOwner: () => get().myRole === 'owner',
+
   fetchWorkspaceData: async (slug: string) => {
     set({ isLoading: true, error: null });
     try {
-      // The backend /api/workspaces/:slug endpoint returns the workspace, members, channels, and projects
+      // The backend /api/workspaces/:slug endpoint returns workspace + members
       const data = await apiFetch(`/workspaces/${slug}`);
+
+      // Determine current user's role from the members list
+      const { useAuthStore } = await import('./auth.js');
+      const currentUserId = useAuthStore.getState().user?.userId;
+      const myMembership = (data.members || []).find(
+        (m: any) => m.userId === currentUserId
+      );
+
+      // Also fetch projects and channels for sidebar
+      const [projectsData, channelsData] = await Promise.all([
+        apiFetch(`/workspaces/${slug}/projects`),
+        apiFetch(`/workspaces/${slug}/channels`),
+      ]);
+
       set({
         workspaceId: data.workspace.workspaceId,
         name: data.workspace.name,
         slug: data.workspace.slug,
-        projects: data.projects || [],
-        channels: data.channels || [],
+        description: data.workspace.description || '',
+        myRole: myMembership?.role || 'member',
+        memberCount: (data.members || []).length,
+        projects: projectsData.projects || [],
+        channels: channelsData.channels || [],
         isLoading: false,
       });
     } catch (err: any) {

@@ -1,119 +1,265 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBoardStore } from '../../store/boardStore.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
-import { Search, Filter, Loader2, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { Search, Filter, Loader2, MoreHorizontal, CheckSquare, Zap, BookOpen, Bug, Layers, ArrowUpDown, Calendar, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { format } from 'date-fns';
+
+const ISSUE_TYPES = [
+  { value: 'epic', icon: Zap, color: 'text-purple-400' },
+  { value: 'story', icon: BookOpen, color: 'text-blue-400' },
+  { value: 'task', icon: CheckSquare, color: 'text-gray-300' },
+  { value: 'bug', icon: Bug, color: 'text-red-400' },
+  { value: 'subtask', icon: Layers, color: 'text-gray-500' },
+];
+
+const IssueTypeIcon = ({ type }: { type: string }) => {
+  const found = ISSUE_TYPES.find(t => t.value === type);
+  if (!found) return <CheckSquare className="w-4 h-4 text-gray-500" />;
+  const Icon = found.icon;
+  return <Icon className={clsx("w-4 h-4", found.color)} title={type} />;
+};
 
 export const BacklogPage = () => {
   const { slug, key } = useParams();
   const navigate = useNavigate();
   const { tasks, isLoading, fetchTasks } = useBoardStore();
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showOnlyBacklog, setShowOnlyBacklog] = useState(false);
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc'|'desc' }>({ key: 'taskKey', direction: 'desc' });
+
   useEffect(() => {
     if (slug && key) fetchTasks(slug, key);
   }, [slug, key, fetchTasks]);
 
-  // Backlog usually consists of all tasks, or specifically TODO tasks.
-  // For this view, we'll list all tasks in a robust table format.
+  const toggleSelectAll = () => {
+    if (selectedTasks.size === filteredTasks.length) {
+      setSelectedTasks(new Set());
+    } else {
+      setSelectedTasks(new Set(filteredTasks.map(t => t.taskId)));
+    }
+  };
+
+  const toggleSelect = (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation();
+    const newSet = new Set(selectedTasks);
+    if (newSet.has(taskId)) newSet.delete(taskId);
+    else newSet.add(taskId);
+    setSelectedTasks(newSet);
+  };
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Filter & Sort
+  let filteredTasks = tasks;
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filteredTasks = filteredTasks.filter(t => t.title.toLowerCase().includes(q) || t.taskKey.toLowerCase().includes(q));
+  }
+  if (showOnlyBacklog) {
+    filteredTasks = filteredTasks.filter(t => t.status === 'TODO'); // Assumption: TODO acts as backlog
+  }
+
+  filteredTasks.sort((a: any, b: any) => {
+    let aVal = a[sortConfig.key];
+    let bVal = b[sortConfig.key];
+    if (sortConfig.key === 'taskKey') {
+      // Parse numeric part for proper sorting
+      aVal = parseInt(a.taskKey.split('-')[1]) || 0;
+      bVal = parseInt(b.taskKey.split('-')[1]) || 0;
+    }
+    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
 
   return (
     <div className="h-full flex flex-col p-6 font-sans">
       
       {/* Controls Bar */}
       <div className="flex items-center justify-between mb-6 shrink-0">
-        <div className="relative w-72">
-          <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input 
-            type="text" 
-            placeholder="Search backlog..." 
-            className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-200 focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50 transition-all"
-          />
+        <div className="flex items-center space-x-4">
+          <div className="relative w-72">
+            <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input 
+              type="text" 
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search backlog..." 
+              className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-9 pr-4 py-2 text-sm text-gray-200 focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50 transition-all"
+            />
+          </div>
+          
+          <button 
+            onClick={() => setShowOnlyBacklog(!showOnlyBacklog)}
+            className={clsx(
+              "px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
+              showOnlyBacklog ? "bg-white/10 border-white/20 text-white" : "bg-gray-900 border-gray-800 text-gray-400 hover:text-gray-200"
+            )}
+          >
+            Backlog Only
+          </button>
         </div>
-        <button className="flex items-center text-sm text-gray-400 hover:text-gray-200 bg-gray-900 border border-gray-800 px-3 py-2 rounded-lg transition-colors">
-          <Filter className="w-4 h-4 mr-2" />
-          Filters
-        </button>
+
+        <div className="flex items-center space-x-3">
+          {selectedTasks.size > 0 && (
+            <div className="flex items-center bg-gray-800 rounded-lg border border-gray-700 px-3 py-1.5 animate-in fade-in slide-in-from-right-4">
+              <span className="text-sm font-semibold text-white mr-3">{selectedTasks.size} selected</span>
+              <select className="bg-gray-900 text-sm text-gray-300 border border-gray-700 rounded px-2 py-1 focus:outline-none mr-2">
+                <option>Change Status...</option>
+                <option>Change Priority...</option>
+                <option>Assign Sprint...</option>
+                <option>Assign User...</option>
+              </select>
+              <button className="text-xs bg-white text-gray-900 font-bold px-2 py-1 rounded">Apply</button>
+            </div>
+          )}
+
+          <button className="flex items-center px-3 py-2 bg-white hover:bg-gray-200 text-gray-950 text-sm font-semibold rounded-lg transition-colors">
+            <Plus className="w-4 h-4 mr-1.5" />
+            Create Task
+          </button>
+        </div>
       </div>
 
       {/* Table Container */}
       <div className="flex-1 bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden flex flex-col">
         {/* Table Header */}
-        <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-gray-800 bg-gray-900/80 text-xs font-semibold text-gray-500 uppercase tracking-wider shrink-0">
-          <div className="col-span-1">Key</div>
-          <div className="col-span-5">Summary</div>
-          <div className="col-span-2">Status</div>
-          <div className="col-span-2">Assignee</div>
-          <div className="col-span-1">Points</div>
+        <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-gray-800 bg-gray-900/80 text-xs font-semibold text-gray-500 uppercase tracking-wider shrink-0 items-center">
+          <div className="col-span-2 flex items-center space-x-3">
+            <input 
+              type="checkbox" 
+              checked={selectedTasks.size > 0 && selectedTasks.size === filteredTasks.length}
+              onChange={toggleSelectAll}
+              className="w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-0 cursor-pointer" 
+            />
+            <button onClick={() => handleSort('taskKey')} className="flex items-center hover:text-gray-300">
+              Key <ArrowUpDown className="w-3 h-3 ml-1" />
+            </button>
+          </div>
+          <div className="col-span-4">
+            <button onClick={() => handleSort('title')} className="flex items-center hover:text-gray-300">
+              Summary <ArrowUpDown className="w-3 h-3 ml-1" />
+            </button>
+          </div>
+          <div className="col-span-2">
+            <button onClick={() => handleSort('status')} className="flex items-center hover:text-gray-300">
+              Status <ArrowUpDown className="w-3 h-3 ml-1" />
+            </button>
+          </div>
+          <div className="col-span-1">Priority</div>
+          <div className="col-span-1">Due Date</div>
+          <div className="col-span-1">Assignee</div>
           <div className="col-span-1 text-right">Actions</div>
         </div>
 
         {/* Table Body */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar relative">
           {isLoading ? (
-            <div className="flex justify-center items-center py-20">
+            <div className="absolute inset-0 flex justify-center items-center">
               <Loader2 className="w-8 h-8 animate-spin text-white" />
             </div>
-          ) : tasks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-500">
-              <p>No tasks in the backlog.</p>
+          ) : filteredTasks.length === 0 ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 bg-gray-900/30 border border-dashed border-gray-800/50 m-6 rounded-xl">
+              <p>No tasks found.</p>
             </div>
           ) : (
-            tasks.map((task) => (
+            filteredTasks.map((task) => (
               <div 
                 key={task.taskId} 
                 onClick={() => navigate(`/w/${slug}/projects/${key}/tasks/${task.taskKey}`)}
-                className="grid grid-cols-12 gap-4 px-6 py-3.5 border-b border-gray-800/60 hover:bg-gray-800/40 cursor-pointer transition-colors items-center group"
+                className={clsx(
+                  "grid grid-cols-12 gap-4 px-6 py-3 border-b border-gray-800/60 hover:bg-gray-800/60 cursor-pointer transition-colors items-center group",
+                  selectedTasks.has(task.taskId) && "bg-white/5 border-white/10"
+                )}
               >
-                {/* Key */}
-                <div className="col-span-1 text-sm font-mono text-gray-500 group-hover:text-gray-300 transition-colors">
-                  {task.taskKey}
+                {/* Checkbox & Key */}
+                <div className="col-span-2 flex items-center space-x-3">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedTasks.has(task.taskId)}
+                    onChange={(e) => toggleSelect(e, task.taskId)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-0 cursor-pointer" 
+                  />
+                  <div className="flex items-center space-x-2">
+                    <IssueTypeIcon type={(task as any).type || 'task'} />
+                    <span className="text-sm font-mono text-gray-500 group-hover:text-gray-300 transition-colors">
+                      {task.taskKey}
+                    </span>
+                  </div>
                 </div>
                 
                 {/* Title */}
-                <div className="col-span-5 text-sm font-medium text-gray-200 truncate pr-4">
+                <div className="col-span-4 text-sm font-medium text-gray-200 truncate pr-4">
                   {task.title}
                 </div>
 
                 {/* Status */}
                 <div className="col-span-2">
                   <span className={clsx(
-                    "text-[11px] font-bold px-2 py-1 rounded-sm uppercase tracking-wide",
+                    "text-[10px] font-bold px-2.5 py-1 rounded-sm uppercase tracking-wide",
                     task.status === 'TODO' ? "bg-gray-800 text-gray-400" :
-                    task.status === 'IN_PROGRESS' ? "bg-white/10 text-gray-300" :
-                    task.status === 'IN_REVIEW' ? "bg-white/10 text-gray-300" :
-                    "bg-white/10 text-gray-300"
+                    task.status === 'IN_PROGRESS' ? "bg-blue-500/20 text-blue-400 border border-blue-500/20" :
+                    task.status === 'IN_REVIEW' ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/20" :
+                    "bg-emerald-500/20 text-emerald-400 border border-emerald-500/20"
                   )}>
                     {task.status.replace('_', ' ')}
                   </span>
                 </div>
 
+                {/* Priority */}
+                <div className="col-span-1">
+                  <span className={clsx(
+                    "flex items-center text-xs font-semibold capitalize",
+                    task.priority === 'critical' ? 'text-red-400' :
+                    task.priority === 'high' ? 'text-orange-400' :
+                    task.priority === 'medium' ? 'text-yellow-400' : 'text-gray-400'
+                  )}>
+                    <span className={clsx("w-2 h-2 rounded-full mr-1.5", 
+                      task.priority === 'critical' ? 'bg-red-500' :
+                      task.priority === 'high' ? 'bg-orange-500' :
+                      task.priority === 'medium' ? 'bg-yellow-500' : 'bg-gray-500'
+                    )}></span>
+                    {task.priority || 'medium'}
+                  </span>
+                </div>
+
+                {/* Due Date */}
+                <div className="col-span-1 text-xs text-gray-500 flex items-center">
+                  {(task as any).dueDate ? (
+                    <>
+                      <Calendar className="w-3.5 h-3.5 mr-1" />
+                      {format(new Date((task as any).dueDate), 'MMM d')}
+                    </>
+                  ) : '—'}
+                </div>
+
                 {/* Assignee */}
-                <div className="col-span-2 flex items-center">
+                <div className="col-span-1 flex items-center">
                   {task.assigneeId ? (
-                    <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center text-[10px] font-bold text-white shadow-sm border border-gray-900">
+                    <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-gray-600 to-gray-500 flex items-center justify-center text-[10px] font-bold text-white shadow-sm border border-gray-900" title="Assigned">
                       U
                     </div>
                   ) : (
-                    <span className="text-xs text-gray-600 italic">Unassigned</span>
-                  )}
-                </div>
-
-                {/* Points */}
-                <div className="col-span-1">
-                  {task.points ? (
-                    <span className="w-6 h-6 flex items-center justify-center rounded-full bg-gray-800 text-xs font-medium text-gray-400">
-                      {task.points}
-                    </span>
-                  ) : (
-                    <span className="text-gray-700">-</span>
+                    <div className="w-6 h-6 rounded-full border border-dashed border-gray-700 flex items-center justify-center text-gray-600" title="Unassigned">
+                      ?
+                    </div>
                   )}
                 </div>
 
                 {/* Actions */}
                 <div className="col-span-1 flex justify-end">
-                  <button className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded transition-colors opacity-0 group-hover:opacity-100">
+                  <button onClick={(e) => { e.stopPropagation(); /* would open menu */ }} className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded transition-colors opacity-0 group-hover:opacity-100">
                     <MoreHorizontal className="w-4 h-4" />
                   </button>
                 </div>

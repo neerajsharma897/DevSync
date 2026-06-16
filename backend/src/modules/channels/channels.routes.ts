@@ -8,6 +8,8 @@ import {
   joinChannel,
   leaveChannel,
   archiveChannel,
+  deleteChannel,
+  updateChannel,
 } from './channels.controller.js';
 
 // Mounted at /api/workspaces/:workspaceId/channels
@@ -24,5 +26,7 @@ router.get('/:channelId', getChannel);
 router.post('/:channelId/join', joinChannel);
 router.delete('/:channelId/leave', leaveChannel);
 router.patch('/:channelId/archive', requireWorkspaceRole(['owner', 'admin']), archiveChannel);
+router.patch('/:channelId', requireWorkspaceRole(['owner', 'admin']), updateChannel);
+router.delete('/:channelId', requireWorkspaceRole(['owner', 'admin']), deleteChannel);
 
 export default router;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { Save, AlertTriangle, Image as ImageIcon, X } from 'lucide-react';
@@ -7,7 +7,14 @@ import { apiFetch } from '../../lib/api.js';
 export const WorkspaceSettings = () => {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { name, slug: currentSlug } = useCurrentWorkspaceStore();
+  const { name, slug: currentSlug, isOwner } = useCurrentWorkspaceStore();
+
+  // RBAC Guard: owner only
+  useEffect(() => {
+    if (!isOwner()) {
+      navigate(`/w/${slug}`, { replace: true });
+    }
+  }, [isOwner, slug, navigate]);
 
   const [wsName, setWsName] = useState(name || '');
   const [description, setDescription] = useState('');
