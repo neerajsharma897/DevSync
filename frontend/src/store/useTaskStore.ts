@@ -11,6 +11,8 @@ interface TaskState {
   createTask: (title: string, description: string, status: TaskStatus) => Promise<void>;
   updateTaskStatus: (taskId: string, status: TaskStatus) => Promise<void>;
   updateTaskSprint: (taskId: string, sprintId: string | null) => Promise<void>;
+  updateTaskAssignee: (taskId: string, assigneeId: string | null) => Promise<void>;
+  deleteTask: (taskId: string) => Promise<void>;
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -111,6 +113,48 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       });
     } catch (err) {
       console.error('Failed to update task sprint:', err);
+      get().fetchTasks();
+    }
+  },
+
+  updateTaskAssignee: async (taskId, assigneeId) => {
+    const workspace = useWorkspaceStore.getState().currentWorkspace;
+    const project = useProjectStore.getState().activeProject;
+    
+    if (!workspace || !project) return;
+
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.id === taskId ? { ...t, assigneeId } : t))
+    }));
+
+    try {
+      await apiFetch(`/workspaces/${workspace.slug}/projects/${project.id}/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ assigneeId })
+      });
+    } catch (err) {
+      console.error('Failed to update task assignee:', err);
+      get().fetchTasks();
+    }
+  },
+
+  deleteTask: async (taskId) => {
+    const workspace = useWorkspaceStore.getState().currentWorkspace;
+    const project = useProjectStore.getState().activeProject;
+    
+    if (!workspace || !project) return;
+
+    // Optimistic delete
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.id !== taskId)
+    }));
+
+    try {
+      await apiFetch(`/workspaces/${workspace.slug}/projects/${project.id}/tasks/${taskId}`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.error('Failed to delete task:', err);
       get().fetchTasks();
     }
   }

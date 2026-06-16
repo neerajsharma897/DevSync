@@ -1,0 +1,67 @@
+
+> devsync@0.0.0 build
+> tsc -b && vite build
+
+src/App.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/pages/GlobalSearchResults.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/GlobalSearchResults.tsx(2,34): error TS6133: 'AlignLeft' is declared but its value is never read.
+src/pages/LandingPage.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/pages/NotificationsInbox.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/NotificationsInbox.tsx(3,87): error TS6133: 'Filter' is declared but its value is never read.
+src/pages/auth/InviteAcceptancePage.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/auth/OAuthCallbackPage.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/channels/ChannelPage.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/channels/ChannelPage.tsx(7,60): error TS6133: 'MoreHorizontal' is declared but its value is never read.
+src/pages/projects/ActiveSprintBoard.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/projects/ActiveSprintBoard.tsx(4,28): error TS6133: 'Clock' is declared but its value is never read.
+src/pages/projects/ActiveSprintBoard.tsx(4,35): error TS6133: 'CheckSquare' is declared but its value is never read.
+src/pages/projects/ActiveSprintBoard.tsx(9,9): error TS6133: 'navigate' is declared but its value is never read.
+src/pages/projects/BacklogPage.tsx(4,1): error TS6133: 'useCurrentWorkspaceStore' is declared but its value is never read.
+src/pages/projects/BacklogPage.tsx(5,18): error TS6133: 'Filter' is declared but its value is never read.
+src/pages/projects/BacklogPage.tsx(21,57): error TS2322: Type '{ className: string; title: string; }' is not assignable to type 'IntrinsicAttributes & Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>'.
+  Property 'title' does not exist on type 'IntrinsicAttributes & Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>'.
+src/pages/projects/BacklogPage.tsx(190,51): error TS2345: Argument of type 'ChangeEvent<HTMLInputElement, HTMLInputElement>' is not assignable to parameter of type 'MouseEvent<Element, MouseEvent>'.
+  Type 'ChangeEvent<HTMLInputElement, HTMLInputElement>' is missing the following properties from type 'MouseEvent<Element, MouseEvent>': altKey, button, buttons, clientX, and 14 more.
+src/pages/projects/BacklogPage.tsx(224,21): error TS2367: This comparison appears to be unintentional because the types '"low" | "medium" | "high" | "urgent"' and '"critical"' have no overlap.
+src/pages/projects/BacklogPage.tsx(229,23): error TS2367: This comparison appears to be unintentional because the types '"low" | "medium" | "high" | "urgent"' and '"critical"' have no overlap.
+src/pages/projects/BoardPage.tsx(5,32): error TS6133: 'MessageSquare' is declared but its value is never read.
+src/pages/projects/BoardPage.tsx(5,47): error TS6133: 'MoreHorizontal' is declared but its value is never read.
+src/pages/projects/BoardPage.tsx(19,27): error TS6133: 'arrayMove' is declared but its value is never read.
+src/pages/projects/BoardPage.tsx(53,9): error TS6133: 'navigate' is declared but its value is never read.
+src/pages/projects/BoardPage.tsx(54,18): error TS6133: 'members' is declared but its value is never read.
+src/pages/projects/BoardPage.tsx(55,9): error TS6133: 'isAdmin' is declared but its value is never read.
+src/pages/projects/BoardPage.tsx(138,27): error TS6133: 'event' is declared but its value is never read.
+src/pages/projects/BoardPage.tsx(403,17): error TS6133: 'e' is declared but its value is never read.
+src/pages/projects/BoardPage.tsx(414,9): error TS2367: This comparison appears to be unintentional because the types '"low" | "medium" | "high" | "urgent"' and '"critical"' have no overlap.
+src/pages/projects/BoardPage.tsx(430,15): error TS2367: This comparison appears to be unintentional because the types '"low" | "medium" | "high" | "urgent"' and '"critical"' have no overlap.
+src/pages/projects/GitHubIntegration.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/projects/GitHubIntegration.tsx(3,32): error TS6133: 'GitPullRequest' is declared but its value is never read.
+src/pages/projects/ProjectChannels.tsx(5,1): error TS6133: 'clsx' is declared but its value is never read.
+src/pages/projects/ProjectLayout.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/pages/projects/ProjectLayout.tsx(3,42): error TS6133: 'Plus' is declared but its value is never read.
+src/pages/projects/ProjectLayout.tsx(9,21): error TS6133: 'isAdmin' is declared but its value is never read.
+src/pages/projects/ProjectList.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/pages/projects/ProjectList.tsx(4,44): error TS6133: 'Activity' is declared but its value is never read.
+src/pages/projects/ProjectMembers.tsx(9,10): error TS6133: 'isLoading' is declared but its value is never read.
+src/pages/projects/ProjectSettings.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/projects/ProjectSettings.tsx(5,1): error TS6133: 'useCurrentWorkspaceStore' is declared but its value is never read.
+src/pages/projects/SprintList.tsx(4,66): error TS6133: 'Pause' is declared but its value is never read.
+src/pages/projects/SprintList.tsx(4,81): error TS6133: 'Edit3' is declared but its value is never read.
+src/pages/projects/SprintList.tsx(5,1): error TS6133: 'clsx' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(4,30): error TS6133: 'MoreHorizontal' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(4,46): error TS6133: 'User' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(4,63): error TS6133: 'MessageSquare' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(4,113): error TS6133: 'Bug' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(4,118): error TS6133: 'BookOpen' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(4,128): error TS6133: 'Zap' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(4,133): error TS6133: 'CheckSquare' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(4,146): error TS6133: 'Layers' is declared but its value is never read.
+src/pages/projects/TaskDetailPage.tsx(6,1): error TS6133: 'clsx' is declared but its value is never read.
+src/pages/workspaces/WorkspaceHome.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/pages/workspaces/WorkspaceHome.tsx(3,10): error TS6133: 'Activity' is declared but its value is never read.
+src/pages/workspaces/WorkspaceLayout.tsx(5,84): error TS6133: 'MessageCircle' is declared but its value is never read.
+src/pages/workspaces/WorkspaceLayout.tsx(5,139): error TS6133: 'User' is declared but its value is never read.
+src/pages/workspaces/WorkspaceMembers.tsx(6,76): error TS6133: 'ChevronDown' is declared but its value is never read.
+src/pages/workspaces/WorkspaceSettings.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/workspaces/WorkspaceSettings.tsx(10,23): error TS6133: 'currentSlug' is declared but its value is never read.

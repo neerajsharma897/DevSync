@@ -162,6 +162,7 @@ export const listTasks = async (req: Request, res: Response): Promise<void> => {
         assigneeId: tasks.assigneeId,
         assigneeName: users.fullName,
         assigneeAvatar: users.avatarUrl,
+        reporterId: tasks.reporterId,
         linkedCommitsCount: tasks.linkedCommitsCount,
         createdAt: tasks.createdAt,
       })
@@ -181,7 +182,7 @@ export const listTasks = async (req: Request, res: Response): Promise<void> => {
 // GET /api/projects/:projectId/tasks/:taskId
 export const getTask = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { taskId } = req.params as Record<string, string>;
+    const taskId = req.params.taskId || res.locals.taskId;
 
     const [task] = await db
       .select()
@@ -205,7 +206,7 @@ export const getTask = async (req: Request, res: Response): Promise<void> => {
 // PATCH /api/projects/:projectId/tasks/:taskId
 export const updateTask = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { taskId } = req.params as Record<string, string>;
+    const taskId = req.params.taskId || res.locals.taskId;
     const {
       title, description, descriptionText, issueType,
       status, priority, assigneeId, dueDate, labels,
@@ -249,7 +250,7 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
 // PATCH /api/projects/:projectId/tasks/:taskId/reorder
 export const reorderTask = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { taskId } = req.params as Record<string, string>;
+    const taskId = req.params.taskId || res.locals.taskId;
     const { status, afterTaskId, beforeTaskId } = req.body;
 
     // Get ranks of surrounding tasks to calculate new rank
@@ -310,7 +311,7 @@ export const reorderTask = async (req: Request, res: Response): Promise<void> =>
 // DELETE /api/projects/:projectId/tasks/:taskId
 export const deleteTask = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { taskId } = req.params as Record<string, string>;
+    const taskId = req.params.taskId || res.locals.taskId;
 
     const [deleted] = await db
       .update(tasks)
@@ -326,6 +327,6 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
     res.json({ message: 'Task deleted' });
   } catch (err) {
     console.error('Delete task error:', err);
-    res.status(500).json({ error: 'Server error deleting task.' });
+    res.status(500).json({ error: 'Server error deleting task.', details: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined });
   }
 };

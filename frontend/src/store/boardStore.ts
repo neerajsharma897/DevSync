@@ -10,6 +10,7 @@ export interface Task {
   status: TaskStatus;
   rank: string; // LexoRank string for ordering
   assigneeId: string | null;
+  reporterId?: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   points: number | null;
   labels: string[];
@@ -17,16 +18,21 @@ export interface Task {
 
 interface BoardState {
   tasks: Task[];
+  members: any[];
   isLoading: boolean;
   error: string | null;
   fetchTasks: (slug: string, projectKey: string) => Promise<void>;
+  fetchMembers: (slug: string, projectKey: string) => Promise<void>;
   moveTask: (slug: string, projectKey: string, taskKey: string, newStatus: TaskStatus, newRank: string) => Promise<void>;
   updateTaskOptimistic: (taskId: string, newStatus: TaskStatus, newRank: string) => void;
   createTask: (slug: string, projectKey: string, title: string, status: TaskStatus) => Promise<void>;
+  updateTaskAssignee: (slug: string, projectKey: string, taskKey: string, assigneeId: string | null) => Promise<void>;
+  deleteTask: (slug: string, projectKey: string, taskKey: string) => Promise<void>;
 }
 
 export const useBoardStore = create<BoardState>((set, get) => ({
   tasks: [],
+  members: [],
   isLoading: true,
   error: null,
 
@@ -39,6 +45,15 @@ export const useBoardStore = create<BoardState>((set, get) => ({
       set({ tasks: sorted, isLoading: false });
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
+    }
+  },
+
+  fetchMembers: async (slug, projectKey) => {
+    try {
+      const data = await apiFetch(`/workspaces/${slug}/projects/${projectKey}/members`);
+      set({ members: data.members || [] });
+    } catch (err) {
+      console.error('Failed to fetch members:', err);
     }
   },
 
@@ -79,6 +94,39 @@ export const useBoardStore = create<BoardState>((set, get) => ({
     } catch (err) {
       console.error('Failed to create task:', err);
       throw err;
+    }
+  },
+
+  updateTaskAssignee: async (slug, projectKey, taskKey, assigneeId) => {
+    // Optimistic update
+    set((state) => ({
+      tasks: state.tasks.map((t) => (t.taskKey === taskKey ? { ...t, assigneeId } : t))
+    }));
+
+    try {
+      await apiFetch(`/workspaces/${slug}/projects/${projectKey}/tasks/${taskKey}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ assigneeId }),
+      });
+    } catch (err) {
+      console.error('Failed to update task assignee:', err);
+      get().fetchTasks(slug, projectKey);
+    }
+  },
+
+  deleteTask: async (slug, projectKey, taskKey) => {
+    // Optimistic update
+    set((state) => ({
+      tasks: state.tasks.filter((t) => t.taskKey !== taskKey)
+    }));
+
+    try {
+      await apiFetch(`/workspaces/${slug}/projects/${projectKey}/tasks/${taskKey}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.error('Failed to delete task:', err);
+      get().fetchTasks(slug, projectKey);
     }
   },
 }));

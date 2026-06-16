@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Task } from '../../types';
 import { users } from '../../data/users';
+import { useTaskStore } from '../../store/useTaskStore';
 
 interface TaskDetailPanelProps {
   task: Task;
@@ -35,10 +36,20 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({ task, onClose }) => {
               <span className="text-xs font-mono font-bold text-text-muted bg-bg-tertiary px-2 py-1 rounded border border-border-default/50">
                  {task.id}
               </span>
-              <div className="flex items-center gap-2">
-                 <button className="text-text-muted hover:text-text-primary p-1 rounded-md hover:bg-bg-hover transition-colors"><Link2 size={18} /></button>
-                 <button className="text-text-muted hover:text-danger p-1 rounded-md hover:bg-danger/10 transition-colors"><Trash2 size={18} /></button>
-              </div>
+               <div className="flex items-center gap-2">
+                  <button className="text-text-muted hover:text-text-primary p-1 rounded-md hover:bg-bg-hover transition-colors"><Link2 size={18} /></button>
+                  <button 
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to delete this task?')) {
+                        useTaskStore.getState().deleteTask(task.id);
+                        onClose();
+                      }
+                    }}
+                    className="text-text-muted hover:text-danger p-1 rounded-md hover:bg-danger/10 transition-colors"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+               </div>
            </div>
            <button onClick={onClose} className="p-2 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded-xl transition-all">
               <X size={20} />
@@ -72,9 +83,28 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({ task, onClose }) => {
                  <div className="flex items-center gap-3">
                     <UserPlus size={16} className="text-text-muted" />
                     <span className="text-xs font-bold text-text-muted uppercase tracking-widest w-24">Assignee</span>
-                    <div className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-bg-hover cursor-pointer transition-all">
-                       <img src={assignee?.avatar} alt={assignee?.fullName} className="w-6 h-6 rounded-full" />
-                       <span className="text-sm font-medium">{assignee?.fullName}</span>
+                    <div className="relative flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-bg-hover cursor-pointer transition-all">
+                       {assignee ? (
+                          <>
+                            <img src={assignee.avatar} alt={assignee.fullName} className="w-6 h-6 rounded-full" />
+                            <span className="text-sm font-medium">{assignee.fullName}</span>
+                          </>
+                       ) : (
+                          <span className="text-sm font-medium text-text-muted italic">Unassigned</span>
+                       )}
+                       <select 
+                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                         value={task.assigneeId || 'unassigned'}
+                         onChange={(e) => {
+                           const val = e.target.value;
+                           useTaskStore.getState().updateTaskAssignee(task.id, val === 'unassigned' ? null : val);
+                         }}
+                       >
+                         <option value="unassigned">Unassigned</option>
+                         {users.map(u => (
+                           <option key={u.id} value={u.id}>{u.fullName}</option>
+                         ))}
+                       </select>
                     </div>
                  </div>
                  <div className="flex items-center gap-3">

@@ -53,7 +53,8 @@ export const TaskDetailPage = () => {
         ]);
         setTask(taskData.task);
         setEditTitle(taskData.task.title);
-        setEditDesc(taskData.task.description || '');
+        const descVal = typeof taskData.task.description === 'string' ? taskData.task.description : taskData.task.descriptionText || '';
+        setEditDesc(descVal);
         setMembers(membersData.members || []);
       } catch (err) {
         console.error('Failed to load task', err);
@@ -211,7 +212,7 @@ export const TaskDetailPage = () => {
                 />
                 <div className="flex space-x-2">
                   <button onClick={handleDescSave} className="text-sm bg-white text-gray-950 px-4 py-1.5 rounded-lg font-bold hover:bg-gray-200">Save</button>
-                  <button onClick={() => { setIsEditingDesc(false); setEditDesc(task.description || ''); }} className="text-sm text-gray-400 hover:text-white">Cancel</button>
+                  <button onClick={() => { setIsEditingDesc(false); setEditDesc(typeof task.description === 'string' ? task.description : task.descriptionText || ''); }} className="text-sm text-gray-400 hover:text-white">Cancel</button>
                 </div>
               </div>
             ) : (
@@ -220,7 +221,7 @@ export const TaskDetailPage = () => {
                 onClick={() => setIsEditingDesc(true)}
               >
                 <p className="text-gray-400 text-sm leading-relaxed whitespace-pre-wrap">
-                  {task.description || 'Click to add a description...'}
+                  {(typeof task.description === 'string' && task.description) || task.descriptionText || 'Click to add a description...'}
                 </p>
               </div>
             )}
@@ -266,7 +267,9 @@ export const TaskDetailPage = () => {
               </div>
               <div className="pt-1.5">
                 <p className="text-sm text-gray-300">
-                  <span className="font-semibold text-gray-200">System</span> created this task
+                  <span className="font-semibold text-gray-200">
+                    {members.find(m => m.userId === task.reporterId)?.fullName || 'System'}
+                  </span> created this task
                 </p>
                 <span className="text-xs text-gray-500 mt-0.5 block">
                   {task.createdAt ? format(new Date(task.createdAt), 'MMM d, yyyy h:mm a') : format(new Date(), 'MMM d, yyyy h:mm a')}
@@ -331,6 +334,19 @@ export const TaskDetailPage = () => {
                     <option key={m.userId} value={m.userId}>{m.fullName}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Reporter */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Reporter</span>
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-[10px] text-gray-300 font-bold">
+                    {(members.find(m => m.userId === task.reporterId)?.fullName || '?').charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-sm text-gray-300 font-medium">
+                    {members.find(m => m.userId === task.reporterId)?.fullName || 'System'}
+                  </span>
+                </div>
               </div>
 
               {/* Due Date */}

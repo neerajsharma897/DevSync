@@ -10,8 +10,12 @@ import {
   deleteTask,
 } from './tasks.controller.js';
 
+import { resolveTaskKey } from '../../middleware/slugs.js';
+
 // Mounted at /api/projects/:projectId/tasks
 const router = Router({ mergeParams: true });
+
+router.param('taskKey', resolveTaskKey);
 
 // All task routes require auth + project membership
 router.use(requireAuth);

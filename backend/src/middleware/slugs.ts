@@ -71,9 +71,17 @@ export const resolveTaskKey = async (req: Request, res: Response, next: NextFunc
   try {
     const projectId = req.params.projectId as string | undefined; // Assuming resolveProjectKey ran first
 
-    const conditions = [eq(tasks.taskKey, taskKey.toUpperCase())];
+    const conditions = [];
     if (projectId) {
       conditions.push(eq(tasks.projectId, projectId));
+    }
+
+    // Check if taskKey is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(taskKey)) {
+      conditions.push(eq(tasks.taskId, taskKey));
+    } else {
+      conditions.push(eq(tasks.taskKey, taskKey.toUpperCase()));
     }
 
     const [task] = await db
@@ -88,6 +96,7 @@ export const resolveTaskKey = async (req: Request, res: Response, next: NextFunc
     }
 
     req.params.taskId = task.id;
+    res.locals.taskId = task.id;
     next();
   } catch (err) {
     console.error('resolveTaskKey error:', err);

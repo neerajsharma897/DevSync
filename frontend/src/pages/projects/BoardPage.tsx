@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBoardStore, Task, TaskStatus } from '../../store/boardStore.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
-import { Loader2, AlertCircle, MessageSquare, MoreHorizontal, Plus, X, Bug, BookOpen, Zap, CheckSquare, Layers } from 'lucide-react';
+import { Loader2, AlertCircle, MessageSquare, MoreHorizontal, Plus, X, Bug, BookOpen, Zap, CheckSquare, Layers, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 import {
   DndContext,
@@ -51,7 +51,7 @@ const IssueTypeIcon = ({ type, className = '' }: { type: string; className?: str
 export const BoardPage = () => {
   const { slug, key } = useParams();
   const navigate = useNavigate();
-  const { tasks, isLoading, fetchTasks, updateTaskOptimistic, moveTask } = useBoardStore();
+  const { tasks, members, isLoading, fetchTasks, fetchMembers, updateTaskOptimistic, moveTask } = useBoardStore();
   const { isAdmin } = useCurrentWorkspaceStore();
 
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -70,8 +70,11 @@ export const BoardPage = () => {
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
-    if (slug && key) fetchTasks(slug, key);
-  }, [slug, key, fetchTasks]);
+    if (slug && key) {
+      fetchTasks(slug, key);
+      fetchMembers(slug, key);
+    }
+  }, [slug, key, fetchTasks, fetchMembers]);
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -393,10 +396,11 @@ const SortableTaskCard = ({ task }: { task: Task }) => {
 const KanbanCard = ({ task, isOverlay = false }: { task: Task, isOverlay?: boolean }) => {
   const { slug, key } = useParams();
   const navigate = useNavigate();
+  const members = useBoardStore(state => state.members);
 
   return (
     <div 
-      onDoubleClick={(e) => {
+      onClick={(e) => {
         if (!isOverlay && slug && key) {
           navigate(`/w/${slug}/projects/${key}/tasks/${task.taskKey}`);
         }
@@ -428,6 +432,19 @@ const KanbanCard = ({ task, isOverlay = false }: { task: Task, isOverlay?: boole
               task.priority === 'medium' ? 'bg-yellow-500' : 'bg-gray-600'
             )} title={task.priority}></span>
           )}
+          {!isOverlay && slug && key && (
+            <button
+              className="ml-auto opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 p-1 rounded-md transition-all hover:bg-red-500/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm('Are you sure you want to delete this task?')) {
+                  useBoardStore.getState().deleteTask(slug, key, task.taskKey);
+                }
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
         
         <p className="text-sm font-medium text-gray-200 mb-4 leading-snug line-clamp-2">
@@ -442,16 +459,46 @@ const KanbanCard = ({ task, isOverlay = false }: { task: Task, isOverlay?: boole
             ))}
           </div>
 
-          <div className="flex items-center space-x-2">
-            {task.assigneeId ? (
-              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-gray-600 to-gray-500 border border-gray-950 flex items-center justify-center text-[10px] text-white font-bold">
-                U
-              </div>
-            ) : (
-              <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-[10px] text-gray-500">
-                ?
+          <div className="flex items-center space-x-1">
+            {/* Reporter Avatar (smaller, left side) */}
+            {task.reporterId && (
+              <div 
+                className="w-5 h-5 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-[9px] text-gray-400 font-medium"
+                title={`Reporter: ${members?.find(m => m.userId === task.reporterId)?.fullName || 'System'}`}
+              >
+                {(members?.find(m => m.userId === task.reporterId)?.fullName || 'S').charAt(0).toUpperCase()}
               </div>
             )}
+            
+            {/* Assignee Avatar (larger, interactive) */}
+            <div className="flex items-center space-x-2 relative group/avatar">
+              {task.assigneeId ? (
+                <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-gray-600 to-gray-500 border border-gray-950 flex items-center justify-center text-[10px] text-white font-bold" title={`Assignee: ${members?.find(m => m.userId === task.assigneeId)?.fullName || 'Assigned'}`}>
+                  {(members?.find(m => m.userId === task.assigneeId)?.fullName || 'U').charAt(0).toUpperCase()}
+                </div>
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-[10px] text-gray-500" title="Unassigned">
+                  ?
+                </div>
+              )}
+            {!isOverlay && slug && key && (
+              <select
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                value={task.assigneeId || 'unassigned'}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  const val = e.target.value;
+                  useBoardStore.getState().updateTaskAssignee(slug, key, task.taskKey, val === 'unassigned' ? null : val);
+                }}
+              >
+                <option value="unassigned">Unassigned</option>
+                {members?.map(m => (
+                  <option key={m.userId} value={m.userId}>{m.fullName}</option>
+                ))}
+              </select>
+            )}
+            </div>
           </div>
         </div>
       </div>
