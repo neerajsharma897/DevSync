@@ -411,7 +411,7 @@ const KanbanCard = ({ task, isOverlay = false }: { task: Task, isOverlay?: boole
     )}>
       {/* Priority Indicator Line */}
       <div className={clsx("absolute left-0 top-0 bottom-0 w-1 rounded-l-lg", 
-        task.priority === 'critical' || task.priority === 'urgent' ? 'bg-red-500' :
+        task.priority === 'critical' ? 'bg-red-500' :
         task.priority === 'high' ? 'bg-orange-500' :
         task.priority === 'medium' ? 'bg-yellow-500' : 'bg-gray-600'
       )} />
@@ -427,7 +427,7 @@ const KanbanCard = ({ task, isOverlay = false }: { task: Task, isOverlay?: boole
           {task.priority && (
             <span className={clsx(
               "w-2 h-2 rounded-full",
-              task.priority === 'critical' || task.priority === 'urgent' ? 'bg-red-500' :
+              task.priority === 'critical' ? 'bg-red-500' :
               task.priority === 'high' ? 'bg-orange-500' :
               task.priority === 'medium' ? 'bg-yellow-500' : 'bg-gray-600'
             )} title={task.priority}></span>

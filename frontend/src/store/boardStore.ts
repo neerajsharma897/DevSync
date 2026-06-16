@@ -11,7 +11,7 @@ export interface Task {
   rank: string; // LexoRank string for ordering
   assigneeId: string | null;
   reporterId?: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
+  priority: 'low' | 'medium' | 'high' | 'critical';
   points: number | null;
   labels: string[];
 }
