@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import { db } from '../../config/db.js';
-import { tasks, taskComments } from '../../db/schema/tasks.js';
+import { tasks } from '../../db/schema/tasks.js';
 import { projects, projectMembers } from '../../db/schema/projects.js';
 import { users } from '../../db/schema/auth.js';
+import { messages } from '../../db/schema/channels.js';
 import { eq, and, isNull, asc, desc, sql, or, ilike } from 'drizzle-orm';
 
 // ─── Lexorank helpers ────────────────────────────────────────────────────────
@@ -76,7 +77,28 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
         rank = lastTask.rank + RANK_GAP;
       }
 
-      // 3. Insert the task
+      // 3. Create the root message for the task's discussion thread
+      const [rootMessage] = await tx
+        .insert(messages)
+        .values({
+          authorId: userId,
+          isSystem: true,
+          systemType: 'task_thread_root',
+          bodyText: `Task thread root for ${taskKey}`,
+        })
+        .returning();
+
+      // 4. Create the system message "User created this task"
+      const [creator] = await tx.select({ fullName: users.fullName }).from(users).where(eq(users.userId, userId));
+      await tx.insert(messages).values({
+        authorId: userId,
+        isSystem: true,
+        systemType: 'task_created',
+        bodyText: `${creator?.fullName || 'System'} created this task`,
+        threadId: rootMessage.messageId,
+      });
+
+      // 5. Insert the task
       const [task] = await tx
         .insert(tasks)
         .values({
@@ -96,6 +118,7 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
           parentTaskId: parentTaskId || null,
           epicId: epicId || null,
           sprintId: sprintId || null,
+          discussionThreadId: rootMessage.messageId,
         })
         .returning();
 
@@ -331,25 +354,35 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-// ─── GET TASK COMMENTS ───────────────────────────────────────────────────────
+// ─── GET TASK COMMENTS (Using Messages Thread) ─────────────────────────────────
 // GET /api/projects/:projectId/tasks/:taskKey/comments
 export const getTaskComments = async (req: Request, res: Response): Promise<void> => {
   try {
     const taskId = res.locals.taskId;
 
+    // Fetch the task to get its discussionThreadId
+    const [task] = await db.select({ discussionThreadId: tasks.discussionThreadId }).from(tasks).where(eq(tasks.taskId, taskId));
+    
+    if (!task || !task.discussionThreadId) {
+      res.json({ comments: [] });
+      return;
+    }
+
     const comments = await db
       .select({
-        commentId: taskComments.commentId,
-        taskId: taskComments.taskId,
-        bodyText: taskComments.bodyText,
-        createdAt: taskComments.createdAt,
+        commentId: messages.messageId,
+        threadId: messages.threadId,
+        bodyText: messages.bodyText,
+        createdAt: messages.createdAt,
+        isSystem: messages.isSystem,
+        systemType: messages.systemType,
         authorId: users.userId,
         authorName: users.fullName,
       })
-      .from(taskComments)
-      .leftJoin(users, eq(users.userId, taskComments.authorId))
-      .where(eq(taskComments.taskId, taskId))
-      .orderBy(asc(taskComments.createdAt));
+      .from(messages)
+      .leftJoin(users, eq(users.userId, messages.authorId))
+      .where(eq(messages.threadId, task.discussionThreadId))
+      .orderBy(asc(messages.createdAt));
 
     res.json({ comments });
   } catch (err) {
@@ -358,7 +391,7 @@ export const getTaskComments = async (req: Request, res: Response): Promise<void
   }
 };
 
-// ─── CREATE TASK COMMENT ─────────────────────────────────────────────────────
+// ─── CREATE TASK COMMENT (Using Messages Thread) ───────────────────────────────
 // POST /api/projects/:projectId/tasks/:taskKey/comments
 export const createTaskComment = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -371,12 +404,21 @@ export const createTaskComment = async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    // Fetch the task to get its discussionThreadId
+    const [task] = await db.select({ discussionThreadId: tasks.discussionThreadId }).from(tasks).where(eq(tasks.taskId, taskId));
+    
+    if (!task || !task.discussionThreadId) {
+      res.status(400).json({ error: 'Task does not have a discussion thread.' });
+      return;
+    }
+
     const [comment] = await db
-      .insert(taskComments)
+      .insert(messages)
       .values({
-        taskId,
+        threadId: task.discussionThreadId,
         authorId: userId,
         bodyText,
+        isSystem: false,
       })
       .returning();
 
@@ -385,7 +427,13 @@ export const createTaskComment = async (req: Request, res: Response): Promise<vo
 
     res.status(201).json({
       comment: {
-        ...comment,
+        commentId: comment.messageId,
+        threadId: comment.threadId,
+        bodyText: comment.bodyText,
+        createdAt: comment.createdAt,
+        isSystem: comment.isSystem,
+        systemType: comment.systemType,
+        authorId: comment.authorId,
         authorName: author?.fullName,
       }
     });

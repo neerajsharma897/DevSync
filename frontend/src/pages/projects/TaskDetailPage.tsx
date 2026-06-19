@@ -314,39 +314,45 @@ export const TaskDetailPage = () => {
             </div>
 
             {/* Comments List */}
-            {comments.map(c => (
-              <div key={c.commentId} className="flex space-x-4 items-start mb-6">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-600 flex items-center justify-center text-white text-xs font-bold shrink-0 border border-gray-600">
-                  {c.authorName ? c.authorName.charAt(0).toUpperCase() : '?'}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-baseline space-x-2">
-                    <span className="font-semibold text-gray-200">{c.authorName || 'Unknown User'}</span>
-                    <span className="text-xs text-gray-500">{format(new Date(c.createdAt), 'MMM d, yyyy h:mm a')}</span>
+            {comments.map(c => {
+              // Ignore the thread root message itself
+              if (c.systemType === 'task_thread_root') return null;
+
+              if (c.isSystem) {
+                return (
+                  <div key={c.commentId} className="flex space-x-4 items-start mb-6">
+                    <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center shrink-0 border border-gray-700">
+                      <CheckCircle2 className="w-4 h-4 text-gray-400" />
+                    </div>
+                    <div className="pt-1.5">
+                      <p className="text-sm text-gray-300">
+                        {c.bodyText}
+                      </p>
+                      <span className="text-xs text-gray-500 mt-0.5 block">
+                        {format(new Date(c.createdAt), 'MMM d, yyyy h:mm a')}
+                      </span>
+                    </div>
                   </div>
-                  <div className="mt-1 text-sm text-gray-300 bg-gray-900/50 border border-gray-800 rounded-lg p-3 whitespace-pre-wrap">
-                    {c.bodyText}
+                );
+              }
+
+              return (
+                <div key={c.commentId} className="flex space-x-4 items-start mb-6">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-600 flex items-center justify-center text-white text-xs font-bold shrink-0 border border-gray-600">
+                    {c.authorName ? c.authorName.charAt(0).toUpperCase() : '?'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-baseline space-x-2">
+                      <span className="font-semibold text-gray-200">{c.authorName || 'Unknown User'}</span>
+                      <span className="text-xs text-gray-500">{format(new Date(c.createdAt), 'MMM d, yyyy h:mm a')}</span>
+                    </div>
+                    <div className="mt-1 text-sm text-gray-300 bg-gray-900/50 border border-gray-800 rounded-lg p-3 whitespace-pre-wrap">
+                      {c.bodyText}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            
-            {/* History item */}
-            <div className="flex space-x-4 items-start">
-              <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center shrink-0 border border-gray-700">
-                <CheckCircle2 className="w-4 h-4 text-gray-400" />
-              </div>
-              <div className="pt-1.5">
-                <p className="text-sm text-gray-300">
-                  <span className="font-semibold text-gray-200">
-                    {members.find(m => m.userId === task.reporterId)?.fullName || 'System'}
-                  </span> created this task
-                </p>
-                <span className="text-xs text-gray-500 mt-0.5 block">
-                  {task.createdAt ? format(new Date(task.createdAt), 'MMM d, yyyy h:mm a') : format(new Date(), 'MMM d, yyyy h:mm a')}
-                </span>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
 
