@@ -98,9 +98,11 @@ export const ProjectMembers = () => {
     setActiveDropdown(null);
   };
 
+  const isOnlyAdmin = isProjectAdmin && members.filter(m => m.role === 'project_admin').length <= 1;
+
   const canActOn = (member: any) => {
-    if (member.userId === currentUser?.userId) return false;
     if (isAdmin()) return true;
+    if (member.userId === currentUser?.userId) return true; // Anyone can act on themselves (to leave)
     if (isProjectAdmin) return member.role !== 'project_admin';
     return false;
   };
@@ -222,24 +224,37 @@ export const ProjectMembers = () => {
 
                       {activeDropdown === member.userId && (
                         <div className="absolute right-0 top-full mt-1 w-48 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden">
-                          {member.role !== 'project_admin' && (
-                            <button onClick={() => handleChangeRole(member.userId, 'project_admin')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors">
-                              Make Project Admin
+                          {member.userId === currentUser?.userId ? (
+                            <button 
+                              onClick={() => !isOnlyAdmin && handleRemove(member.userId)} 
+                              disabled={isOnlyAdmin}
+                              title={isOnlyAdmin ? "You cannot remove yourself — you are the only admin" : undefined}
+                              className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Leave Project
                             </button>
+                          ) : (
+                            <>
+                              {member.role !== 'project_admin' && (
+                                <button onClick={() => handleChangeRole(member.userId, 'project_admin')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors">
+                                  Make Project Admin
+                                </button>
+                              )}
+                              {member.role !== 'developer' && (
+                                <button onClick={() => handleChangeRole(member.userId, 'developer')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors">
+                                  Make Developer
+                                </button>
+                              )}
+                              {member.role !== 'viewer' && (
+                                <button onClick={() => handleChangeRole(member.userId, 'viewer')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors">
+                                  Make Viewer
+                                </button>
+                              )}
+                              <button onClick={() => handleRemove(member.userId)} className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-gray-800 transition-colors border-t border-gray-800">
+                                Remove from Project
+                              </button>
+                            </>
                           )}
-                          {member.role !== 'developer' && (
-                            <button onClick={() => handleChangeRole(member.userId, 'developer')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors">
-                              Make Developer
-                            </button>
-                          )}
-                          {member.role !== 'viewer' && (
-                            <button onClick={() => handleChangeRole(member.userId, 'viewer')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors">
-                              Make Viewer
-                            </button>
-                          )}
-                          <button onClick={() => handleRemove(member.userId)} className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-gray-800 transition-colors border-t border-gray-800">
-                            Remove from Project
-                          </button>
                         </div>
                       )}
                     </div>

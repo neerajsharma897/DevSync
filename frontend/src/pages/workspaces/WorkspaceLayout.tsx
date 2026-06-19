@@ -9,9 +9,11 @@ export const WorkspaceLayout = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const { name, projects, channels, isLoading, error, myRole, isAdmin, isOwner, fetchWorkspaceData } = useCurrentWorkspaceStore();
+  const { name, projects, channels, members, isLoading, error, myRole, isAdmin, isOwner, fetchWorkspaceData } = useCurrentWorkspaceStore();
   const [showChannelModal, setShowChannelModal] = useState(false);
+  const [showDMModal, setShowDMModal] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
+  const [selectedDMMemberId, setSelectedDMMemberId] = useState('');
   const [newChannelType, setNewChannelType] = useState('public');
   const [isDefaultChannel, setIsDefaultChannel] = useState(false);
   const [isAnnouncementOnly, setIsAnnouncementOnly] = useState(false);
@@ -58,6 +60,40 @@ export const WorkspaceLayout = () => {
       fetchWorkspaceData(slug);
     } catch (err: any) {
       alert(err.message || 'Failed to create channel.');
+    } finally {
+      setIsCreatingChannel(false);
+    }
+  };
+
+  const handleCreateDM = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDMMemberId || !slug) return;
+    setIsCreatingChannel(true);
+    
+    // Find member to construct a name
+    const member = members.find(m => m.userId === selectedDMMemberId);
+    if (!member) {
+      setIsCreatingChannel(false);
+      return;
+    }
+    
+    const dmName = `dm-${user?.fullName.split(' ')[0]}-${member.fullName.split(' ')[0]}`.toLowerCase();
+
+    try {
+      const { apiFetch } = await import('../../lib/api.js');
+      await apiFetch(`/workspaces/${slug}/channels`, {
+        method: 'POST',
+        body: JSON.stringify({ 
+          name: dmName, 
+          type: 'dm',
+          memberIds: [selectedDMMemberId]
+        })
+      });
+      setShowDMModal(false);
+      setSelectedDMMemberId('');
+      fetchWorkspaceData(slug);
+    } catch (err: any) {
+      alert(err.message || 'Failed to create DM.');
     } finally {
       setIsCreatingChannel(false);
     }
@@ -144,7 +180,7 @@ export const WorkspaceLayout = () => {
               )}
             </div>
             <div className="px-3 space-y-0.5">
-              {channels.filter(c => !c.projectId).map((ch) => (
+              {channels.filter(c => !c.projectId && c.type !== 'dm' && c.type !== 'group_dm').map((ch) => (
                 <NavLink
                   key={ch.channelId}
                   to={`/w/${slug}/channels/${ch.channelId}`}
@@ -219,12 +255,36 @@ export const WorkspaceLayout = () => {
           <div>
             <div className="px-5 mb-1.5 flex items-center justify-between group cursor-pointer">
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider group-hover:text-gray-400 transition-colors">Direct Messages</span>
-              <button className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-300 transition-all">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowDMModal(true);
+                }}
+                className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-300 transition-all"
+              >
                 <Plus className="w-3.5 h-3.5" />
               </button>
             </div>
-            <div className="px-3">
-              <p className="text-xs text-gray-600 px-2 py-2 italic">No conversations yet</p>
+            <div className="px-3 space-y-0.5">
+              {channels.filter(c => c.type === 'dm' || c.type === 'group_dm').length === 0 ? (
+                <p className="text-xs text-gray-600 px-2 py-2 italic">No conversations yet</p>
+              ) : (
+                channels.filter(c => c.type === 'dm' || c.type === 'group_dm').map((ch) => (
+                  <NavLink
+                    key={ch.channelId}
+                    to={`/w/${slug}/channels/${ch.channelId}`}
+                    className={({ isActive }) => clsx(
+                      "flex items-center px-2 py-1 rounded-md text-[15px] transition-colors",
+                      isActive ? "bg-white/10 text-gray-300 font-medium" : "text-gray-400 hover:bg-gray-800/60 hover:text-gray-200"
+                    )}
+                  >
+                    <div className="w-4 h-4 mr-2 rounded-full bg-gradient-to-tr from-gray-700 to-gray-500 flex items-center justify-center text-[8px] text-white font-bold shrink-0">
+                      {ch.name?.charAt(0).toUpperCase() || '?'}
+                    </div>
+                    <span className="truncate">{ch.name}</span>
+                  </NavLink>
+                ))
+              )}
             </div>
           </div>
 
@@ -394,6 +454,45 @@ export const WorkspaceLayout = () => {
                 <button type="submit" disabled={isCreatingChannel} className="px-6 py-2 bg-white text-gray-950 hover:bg-gray-200 font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center">
                   {isCreatingChannel && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE DM MODAL */}
+      {showDMModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-800">
+              <h3 className="text-xl font-bold text-white">Start Direct Message</h3>
+              <button onClick={() => setShowDMModal(false)} className="text-gray-500 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateDM} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Select Teammate</label>
+                <div className="relative">
+                  <select
+                    value={selectedDMMemberId}
+                    onChange={e => setSelectedDMMemberId(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-white transition-colors"
+                    required
+                  >
+                    <option value="" disabled>Select a workspace member</option>
+                    {members.filter(m => m.userId !== user?.userId).map(m => (
+                      <option key={m.userId} value={m.userId}>{m.fullName} ({m.email})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="pt-4 flex justify-end space-x-3">
+                <button type="button" onClick={() => setShowDMModal(false)} className="px-4 py-2 text-gray-400 hover:text-white transition-colors font-medium">Cancel</button>
+                <button type="submit" disabled={isCreatingChannel} className="px-6 py-2 bg-white text-gray-950 hover:bg-gray-200 font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center">
+                  {isCreatingChannel && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Start Chat
                 </button>
               </div>
             </form>

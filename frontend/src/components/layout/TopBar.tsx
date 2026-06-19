@@ -1,8 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Search, Command, ChevronDown } from 'lucide-react';
+import { Search, Command, ChevronDown } from 'lucide-react';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useWorkspaceStore } from '../../store/workspaceStore';
+import NotificationDropdown from './NotificationDropdown';
 
 const TopBar: React.FC = () => {
   const navigate = useNavigate();
@@ -41,13 +42,7 @@ const TopBar: React.FC = () => {
           <ChevronDown size={14} className="text-text-muted" />
         </div>
 
-        <button 
-          onClick={() => navigate('/notifications')}
-          className="relative p-2 text-text-secondary hover:text-text-primary transition-colors"
-        >
-          <Bell size={20} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent-purple border border-bg-primary"></span>
-        </button>
+        <NotificationDropdown />
 
         <div className="w-px h-6 bg-border-default"></div>
 

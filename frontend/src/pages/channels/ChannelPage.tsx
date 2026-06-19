@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useChatStore } from '../../store/chatStore.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { useAuthStore } from '../../store/auth.js';
@@ -11,6 +11,18 @@ import { apiFetch } from '../../lib/api.js';
 export const ChannelPage = () => {
   const { slug, channelId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const taskKeyQuery = searchParams.get('task');
+  const [initialChatContent, setInitialChatContent] = useState('');
+
+  useEffect(() => {
+    if (taskKeyQuery) {
+      setInitialChatContent(`<p><span class="text-blue-400 bg-blue-500/10 px-1 rounded font-medium">@${taskKeyQuery}</span> </p>`);
+    } else {
+      setInitialChatContent('');
+    }
+  }, [taskKeyQuery, channelId]);
+
   const { user } = useAuthStore();
   const { channels, memberCount, isAdmin, fetchWorkspaceData, myRole } = useCurrentWorkspaceStore();
   const { messages, isLoading, joinChannel, leaveChannel, sendMessage } = useChatStore();
@@ -32,7 +44,10 @@ export const ChannelPage = () => {
 
       if (currentChannel.projectId) {
         try {
-          const data = await apiFetch(`/workspaces/${slug}/projects/${currentChannel.projectId}/members`);
+          const project = useCurrentWorkspaceStore.getState().projects.find(p => p.projectId === currentChannel.projectId);
+          if (!project) throw new Error('Project not found in store');
+          
+          const data = await apiFetch(`/workspaces/${slug}/projects/${project.key}/members`);
           const members = data.members || [];
           const myMembership = members.find((m: any) => m.userId === user?.userId);
           
@@ -47,7 +62,12 @@ export const ChannelPage = () => {
         }
       } else {
         // All workspace roles ('owner', 'admin', 'member') can chat in workspace channels
-        setCanChat(true);
+        // EXCEPT if it is announcement only
+        if (currentChannel?.isAnnouncementOnly) {
+          setCanChat(myRole === 'owner' || myRole === 'admin');
+        } else {
+          setCanChat(true);
+        }
       }
     };
     checkPermissions();
@@ -274,10 +294,17 @@ export const ChannelPage = () => {
         {/* Input Area */}
         <div className="px-6 pb-6 pt-2 shrink-0">
           {canChat ? (
-            <TiptapEditor onSubmit={handleSendMain} placeholder={`Message #${currentChannel?.name || 'channel'}`} />
+            <TiptapEditor 
+              onSubmit={handleSendMain} 
+              placeholder={`Message #${currentChannel?.name || 'channel'}`} 
+              initialContent={initialChatContent}
+            />
           ) : (
-            <div className="text-gray-500 text-sm text-center p-3 bg-gray-900/50 rounded-lg border border-gray-800">
-              You are a viewer and cannot send messages in this channel.
+            <div 
+              title={currentChannel?.isAnnouncementOnly ? "Only admins can post here" : "You are a viewer and cannot send messages in this channel"}
+              className="text-gray-500 text-sm text-center p-3 bg-gray-900/50 rounded-lg border border-gray-800 cursor-not-allowed"
+            >
+              {currentChannel?.isAnnouncementOnly ? "Only admins can post here" : "You are a viewer and cannot send messages in this channel."}
             </div>
           )}
         </div>

@@ -5,6 +5,7 @@ import { workspaceMembers } from '../../db/schema/workspaces.js';
 import { projectMembers } from '../../db/schema/projects.js';
 import { users } from '../../db/schema/auth.js';
 import { eq, and } from 'drizzle-orm';
+import { logAuditAction } from '../audit/audit.controller.js';
 
 // ─── Helper: generate slug from channel name ────────────────────────────────
 const channelSlug = (name: string): string =>
@@ -16,7 +17,7 @@ export const createChannel = async (req: Request, res: Response): Promise<void> 
   try {
     const { workspaceId } = req.params as Record<string, string>;
     const userId = req.user!.userId;
-    const { name, description, type, projectId, isAnnouncementOnly, isDefault } = req.body;
+    const { name, description, type, projectId, isAnnouncementOnly, isDefault, memberIds } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Channel name is required.' });
@@ -48,9 +49,26 @@ export const createChannel = async (req: Request, res: Response): Promise<void> 
         .returning();
 
       // Add creator as first member
-      await tx.insert(channelMembers).values({
-        channelId: channel.channelId,
-        userId,
+      const newMembers = [{ channelId: channel.channelId, userId }];
+      
+      if (Array.isArray(memberIds)) {
+        for (const mId of memberIds) {
+          if (mId !== userId) {
+            newMembers.push({ channelId: channel.channelId, userId: mId });
+          }
+        }
+      }
+
+      await tx.insert(channelMembers).values(newMembers);
+
+      await logAuditAction({
+        actorId: userId,
+        action: 'channel.created',
+        entityType: 'channel',
+        entityId: channel.channelId,
+        workspaceId: workspaceId,
+        newValues: { name: channel.name, slug: channel.slug, type: channel.type, project_id: channel.projectId, is_default: channel.isDefault },
+        tx
       });
 
       return channel;
@@ -165,7 +183,21 @@ export const joinChannel = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    await db.insert(channelMembers).values({ channelId, userId });
+    await db.transaction(async (tx) => {
+      await tx.insert(channelMembers).values({ channelId, userId }).returning();
+
+      const [channel] = await tx.select({ workspaceId: channels.workspaceId }).from(channels).where(eq(channels.channelId, channelId)).limit(1);
+
+      await logAuditAction({
+        actorId: userId,
+        action: 'channel.member_added',
+        entityType: 'channel',
+        entityId: channelId,
+        workspaceId: channel?.workspaceId ?? undefined,
+        newValues: { user_id: userId },
+        tx
+      });
+    });
 
     res.status(201).json({ message: 'Joined channel' });
   } catch (err) {
@@ -181,12 +213,30 @@ export const leaveChannel = async (req: Request, res: Response): Promise<void> =
     const { channelId } = req.params as Record<string, string>;
     const userId = req.user!.userId;
 
-    const [removed] = await db
-      .delete(channelMembers)
-      .where(and(eq(channelMembers.channelId, channelId), eq(channelMembers.userId, userId)))
-      .returning({ id: channelMembers.id });
+    const result = await db.transaction(async (tx) => {
+      const [removed] = await tx
+        .delete(channelMembers)
+        .where(and(eq(channelMembers.channelId, channelId), eq(channelMembers.userId, userId)))
+        .returning({ id: channelMembers.id });
 
-    if (!removed) {
+      if (removed) {
+        const [channel] = await tx.select({ workspaceId: channels.workspaceId }).from(channels).where(eq(channels.channelId, channelId)).limit(1);
+        await logAuditAction({
+          actorId: userId,
+          action: 'channel.member_removed',
+          entityType: 'channel',
+          entityId: channelId,
+          workspaceId: channel?.workspaceId ?? undefined,
+          newValues: null,
+          oldValues: { user_id: userId },
+          tx
+        });
+      }
+
+      return removed;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Not a member of this channel.' });
       return;
     }
@@ -204,18 +254,35 @@ export const archiveChannel = async (req: Request, res: Response): Promise<void>
   try {
     const { channelId } = req.params as Record<string, string>;
 
-    const [updated] = await db
-      .update(channels)
-      .set({ isArchived: true })
-      .where(eq(channels.channelId, channelId))
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(channels)
+        .set({ isArchived: true })
+        .where(eq(channels.channelId, channelId))
+        .returning();
 
-    if (!updated) {
+      if (updated) {
+        await logAuditAction({
+          actorId: req.user!.userId,
+          action: 'channel.archived',
+          entityType: 'channel',
+          entityId: channelId,
+          workspaceId: updated.workspaceId ?? undefined,
+          newValues: { is_archived: true },
+          oldValues: { is_archived: false },
+          tx
+        });
+      }
+
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Channel not found.' });
       return;
     }
 
-    res.json({ message: 'Channel archived', channel: updated });
+    res.json({ message: 'Channel archived', channel: result });
   } catch (err) {
     console.error('Archive channel error:', err);
     res.status(500).json({ error: 'Server error archiving channel.' });
@@ -228,17 +295,34 @@ export const deleteChannel = async (req: Request, res: Response): Promise<void> 
   try {
     const { channelId } = req.params as Record<string, string>;
 
-    const [deleted] = await db
-      .delete(channels)
-      .where(eq(channels.channelId, channelId))
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [deleted] = await tx
+        .delete(channels)
+        .where(eq(channels.channelId, channelId))
+        .returning();
 
-    if (!deleted) {
+      if (deleted) {
+        await logAuditAction({
+          actorId: req.user!.userId,
+          action: 'channel.deleted',
+          entityType: 'channel',
+          entityId: channelId,
+          workspaceId: deleted.workspaceId ?? undefined,
+          newValues: null,
+          oldValues: { name: deleted.name, type: deleted.type },
+          tx
+        });
+      }
+
+      return deleted;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Channel not found.' });
       return;
     }
 
-    res.json({ message: 'Channel deleted successfully', channel: deleted });
+    res.json({ message: 'Channel deleted successfully', channel: result });
   } catch (err) {
     console.error('Delete channel error:', err);
     res.status(500).json({ error: 'Server error deleting channel.' });
@@ -261,18 +345,38 @@ export const updateChannel = async (req: Request, res: Response): Promise<void> 
       updateData.description = description;
     }
 
-    const [updated] = await db
-      .update(channels)
-      .set(updateData)
-      .where(eq(channels.channelId, channelId))
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [oldChannel] = await tx.select().from(channels).where(eq(channels.channelId, channelId)).limit(1);
 
-    if (!updated) {
+      const [updated] = await tx
+        .update(channels)
+        .set(updateData)
+        .where(eq(channels.channelId, channelId))
+        .returning();
+
+      if (!updated || !oldChannel) return null;
+
+      const actorId = req.user!.userId;
+      const workspaceId = updated.workspaceId ?? undefined;
+      const eType = 'channel';
+      const eId = channelId;
+
+      if (oldChannel.name !== updated.name) {
+        await logAuditAction({ actorId, action: 'channel.name_changed', entityType: eType, entityId: eId, workspaceId, newValues: { name: updated.name }, oldValues: { name: oldChannel.name }, tx });
+      }
+      if (oldChannel.description !== updated.description) {
+        await logAuditAction({ actorId, action: 'channel.description_changed', entityType: eType, entityId: eId, workspaceId, newValues: { description: updated.description }, oldValues: { description: oldChannel.description }, tx });
+      }
+
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Channel not found.' });
       return;
     }
 
-    res.json({ message: 'Channel updated', channel: updated });
+    res.json({ message: 'Channel updated', channel: result });
   } catch (err) {
     console.error('Update channel error:', err);
     res.status(500).json({ error: 'Server error updating channel.' });

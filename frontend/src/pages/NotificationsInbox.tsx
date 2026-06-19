@@ -1,74 +1,63 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, MessageSquare, FileEdit, CheckCircle2, GitBranch, IterationCcw } from 'lucide-react';
+import { Bell, Check, MessageSquare, CheckCircle2, User, UserMinus, AtSign, ArrowRightLeft, Play, Hash, Mail, GitCommit, XCircle, Briefcase, Building2 } from 'lucide-react';
 import clsx from 'clsx';
-import { apiFetch } from '../lib/api.js';
+import { useNotificationStore } from '../store/useNotificationStore';
+import { useCurrentWorkspaceStore } from '../store/currentWorkspace';
 
 export const NotificationsInbox = () => {
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { notifications, isLoading, fetchNotifications, markAsRead, markAllAsRead } = useNotificationStore();
+  const { slug } = useCurrentWorkspaceStore();
   const [viewMode, setViewMode] = useState<'all' | 'unread'>('all');
   const [filterType, setFilterType] = useState('all');
   const navigate = useNavigate();
 
-  const fetchNotifications = async () => {
-    try {
-      const data = await apiFetch('/notifications');
-      setNotifications(data.notifications || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchNotifications();
-  }, []);
+  }, [fetchNotifications]);
 
   const markAllRead = async () => {
-    try {
-      await apiFetch('/notifications/read-all', { method: 'PATCH' });
-      setNotifications(notifications.map(n => ({ ...n, isRead: true })));
-    } catch (err) {
-      console.error(err);
-    }
+    await markAllAsRead();
   };
 
   const markRead = async (id: string) => {
     const notif = notifications.find(n => n.notificationId === id);
-    if (notif?.isRead) return;
-
-    try {
-      setNotifications(notifications.map(n => n.notificationId === id ? { ...n, isRead: true } : n));
-      await apiFetch(`/notifications/${id}/read`, { method: 'PATCH' });
-    } catch (err) {
-      console.error(err);
+    if (!notif?.isRead) {
+      await markAsRead(id);
     }
   };
 
   const getIcon = (type: string) => {
     switch (type) {
-      case 'message':
-      case 'mention':
-        return { icon: MessageSquare, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' };
-      case 'task':
-        return { icon: FileEdit, color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' };
-      case 'sprint':
-        return { icon: IterationCcw, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' };
-      case 'ci':
-        return { icon: GitBranch, color: 'text-green-400 bg-green-500/10 border-green-500/20' };
-      default:
-        return { icon: CheckCircle2, color: 'text-gray-400 bg-white/10 border-white/20' };
+      case 'task_assigned': return { icon: User, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' };
+      case 'task_unassigned': return { icon: UserMinus, color: 'text-red-400 bg-red-500/10 border-red-500/20' };
+      case 'task_commented': return { icon: MessageSquare, color: 'text-green-400 bg-green-500/10 border-green-500/20' };
+      case 'task_mentioned': return { icon: AtSign, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' };
+      case 'task_status_changed': return { icon: ArrowRightLeft, color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' };
+      case 'sprint_started': return { icon: Play, color: 'text-green-400 bg-green-500/10 border-green-500/20' };
+      case 'sprint_closed': return { icon: CheckCircle2, color: 'text-gray-400 bg-gray-500/10 border-gray-500/20' };
+      case 'channel_mentioned': return { icon: Hash, color: 'text-pink-400 bg-pink-500/10 border-pink-500/20' };
+      case 'dm_received': return { icon: Mail, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' };
+      case 'commit_linked': return { icon: GitCommit, color: 'text-orange-400 bg-orange-500/10 border-orange-500/20' };
+      case 'ci_failed': return { icon: XCircle, color: 'text-red-500 bg-red-500/10 border-red-500/20' };
+      case 'project_member_added': return { icon: Briefcase, color: 'text-teal-400 bg-teal-500/10 border-teal-500/20' };
+      case 'workspace_invited': return { icon: Building2, color: 'text-blue-500 bg-blue-500/10 border-blue-500/20' };
+      default: return { icon: Bell, color: 'text-gray-400 bg-white/10 border-white/20' };
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const localUnreadCount = notifications.filter(n => !n.isRead).length;
 
   // Apply filters
   let filtered = notifications;
   if (viewMode === 'unread') filtered = filtered.filter(n => !n.isRead);
-  if (filterType !== 'all') filtered = filtered.filter(n => n.type === filterType);
+  if (filterType !== 'all') {
+    if (filterType === 'tasks') filtered = filtered.filter(n => n.type.startsWith('task_'));
+    else if (filterType === 'sprints') filtered = filtered.filter(n => n.type.startsWith('sprint_'));
+    else if (filterType === 'messages') filtered = filtered.filter(n => n.type === 'channel_mentioned' || n.type === 'dm_received');
+    else if (filterType === 'github') filtered = filtered.filter(n => n.type === 'commit_linked' || n.type === 'ci_failed');
+    else if (filterType === 'membership') filtered = filtered.filter(n => n.type === 'project_member_added' || n.type === 'workspace_invited');
+  }
 
   return (
     <div className="h-full overflow-y-auto p-8 font-sans bg-gray-950 text-gray-200">
@@ -76,15 +65,15 @@ export const NotificationsInbox = () => {
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
             <h1 className="text-2xl font-bold text-white">Inbox</h1>
-            {unreadCount > 0 && (
+            {localUnreadCount > 0 && (
               <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                {unreadCount} new
+                {localUnreadCount} new
               </span>
             )}
           </div>
           <button 
             onClick={markAllRead}
-            disabled={unreadCount === 0}
+            disabled={localUnreadCount === 0}
             className="flex items-center text-sm font-medium text-gray-400 hover:text-white disabled:opacity-50 transition-colors"
           >
             <Check className="w-4 h-4 mr-2" />
@@ -115,11 +104,11 @@ export const NotificationsInbox = () => {
             className="bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none"
           >
             <option value="all">All Types</option>
-            <option value="task">Tasks</option>
-            <option value="message">Messages</option>
-            <option value="mention">Mentions</option>
-            <option value="sprint">Sprints</option>
-            <option value="ci">CI/CD</option>
+            <option value="tasks">Tasks</option>
+            <option value="sprints">Sprints</option>
+            <option value="messages">Messages</option>
+            <option value="github">GitHub</option>
+            <option value="membership">Membership</option>
           </select>
         </div>
 
@@ -134,8 +123,12 @@ export const NotificationsInbox = () => {
                   key={notif.notificationId}
                   onClick={() => {
                     markRead(notif.notificationId);
-                    // Navigate to entity if link data exists
-                    if (notif.link) navigate(notif.link);
+                    if (notif.entityType === 'task') navigate(`/w/${slug}/search`);
+                    else if (notif.entityType === 'sprint') navigate(`/w/${slug}/search`);
+                    else if (notif.entityType === 'message') navigate(`/w/${slug}/search`);
+                    else if (notif.entityType === 'project') navigate(`/w/${slug}/search`);
+                    else if (notif.entityType === 'workspace' || notif.entityType === 'workspace_member') navigate(`/w/${slug}/members`);
+                    else navigate(`/w/${slug}`);
                   }}
                   className={clsx(
                     "flex items-start p-5 hover:bg-gray-800/40 cursor-pointer transition-colors relative group",

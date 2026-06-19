@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { Save, AlertTriangle, Image as ImageIcon, X } from 'lucide-react';
 import { apiFetch } from '../../lib/api.js';
+import { WorkspaceAuditLogs } from './WorkspaceAuditLogs.js';
 
 export const WorkspaceSettings = () => {
   const { slug } = useParams();
@@ -98,6 +99,9 @@ export const WorkspaceSettings = () => {
             </div>
           </div>
         </div>
+
+        {/* Audit Logs */}
+        {isOwner() && <WorkspaceAuditLogs />}
 
         {/* Danger Zone */}
         {isOwner() && (

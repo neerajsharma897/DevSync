@@ -6,19 +6,23 @@ import { eq, and, desc } from 'drizzle-orm';
 
 // ─── INTERNAL HELPER: Log an Action ──────────────────────────────────────────
 export const logAuditAction = async (params: {
-  actorId: string;
+  actorId: string | null;
   action: string;
   entityType?: string;
   entityId?: string;
+  workspaceId?: string;
   oldValues?: any;
   newValues?: any;
+  tx?: any; // optional transaction object
 }) => {
   try {
-    await db.insert(auditLogs).values({
+    const dbOrTx = params.tx || db;
+    await dbOrTx.insert(auditLogs).values({
       actorId: params.actorId,
       action: params.action,
       entityType: params.entityType || null,
       entityId: params.entityId || null,
+      workspaceId: params.workspaceId || null,
       oldValues: params.oldValues || null,
       newValues: params.newValues || null,
     });
@@ -50,10 +54,12 @@ export const getEntityAuditLogs = async (req: Request, res: Response): Promise<v
       .from(auditLogs)
       .leftJoin(users, eq(auditLogs.actorId, users.userId))
       .where(
-        and(
-          eq(auditLogs.entityType, entityType),
-          eq(auditLogs.entityId, entityId)
-        )
+        entityType === 'workspace' 
+          ? eq(auditLogs.workspaceId, entityId)
+          : and(
+              eq(auditLogs.entityType, entityType),
+              eq(auditLogs.entityId, entityId)
+            )
       )
       .orderBy(desc(auditLogs.createdAt))
       .limit(parsedLimit);

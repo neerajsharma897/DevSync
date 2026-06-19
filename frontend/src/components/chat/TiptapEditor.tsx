@@ -1,18 +1,23 @@
 import React, { useCallback, useRef, useEffect } from 'react';
 import { useEditor, EditorContent, Extension } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Mention from '@tiptap/extension-mention';
 import { Bold, Italic, Strikethrough, Code, List, SendHorizontal } from 'lucide-react';
 import clsx from 'clsx';
+import suggestion from './suggestion.ts';
+import { useCurrentWorkspaceStore } from '../../store/currentWorkspace';
 
 interface TiptapEditorProps {
   onSubmit: (content: string) => void;
   placeholder?: string;
   isSending?: boolean;
+  initialContent?: string;
 }
 
-export const TiptapEditor = ({ onSubmit, placeholder = 'Type a message...', isSending = false }: TiptapEditorProps) => {
+export const TiptapEditor = ({ onSubmit, placeholder = 'Type a message...', isSending = false, initialContent = '' }: TiptapEditorProps) => {
   const submitRef = useRef(onSubmit);
   const isSendingRef = useRef(isSending);
+  const { members } = useCurrentWorkspaceStore();
 
   useEffect(() => {
     submitRef.current = onSubmit;
@@ -40,8 +45,22 @@ export const TiptapEditor = ({ onSubmit, placeholder = 'Type a message...', isSe
           };
         },
       }),
+      Mention.configure({
+        HTMLAttributes: {
+          class: 'text-blue-400 bg-blue-500/10 px-1 rounded font-medium',
+        },
+        suggestion: {
+          ...suggestion,
+          items: ({ query }: { query: string }) => {
+            return members
+              .filter(item => item.fullName.toLowerCase().includes(query.toLowerCase()))
+              .map(item => ({ id: item.userId, label: item.fullName }))
+              .slice(0, 50);
+          },
+        },
+      }),
     ],
-    content: '',
+    content: initialContent,
     editorProps: {
       attributes: {
         class: 'prose prose-invert max-w-none focus:outline-none min-h-[60px] max-h-[400px] overflow-y-auto px-4 py-3 text-sm text-gray-200',
@@ -57,6 +76,13 @@ export const TiptapEditor = ({ onSubmit, placeholder = 'Type a message...', isSe
       editor.commands.clearContent();
     }
   }, [editor, onSubmit, isSending]);
+
+  useEffect(() => {
+    if (editor && initialContent) {
+      editor.commands.setContent(initialContent);
+      editor.commands.focus('end');
+    }
+  }, [editor, initialContent]);
 
   if (!editor) return null;
 

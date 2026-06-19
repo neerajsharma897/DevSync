@@ -2,7 +2,12 @@ import { Request, Response } from 'express';
 import { db } from '../../config/db.js';
 import { sprints, sprintTasks } from '../../db/schema/sprints.js';
 import { tasks } from '../../db/schema/tasks.js';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
+import { logAuditAction } from '../audit/audit.controller.js';
+import { createNotification } from '../notifications/notifications.controller.js';
+import { users } from '../../db/schema/auth.js';
+import { projectMembers } from '../../db/schema/projects.js';
+import { projects } from '../../db/schema/projects.js';
 
 // ─── CREATE SPRINT ───────────────────────────────────────────────────────────
 // POST /api/projects/:projectId/sprints
@@ -26,20 +31,42 @@ export const createSprint = async (req: Request, res: Response): Promise<void> =
 
     const sequenceNumber = lastSprint ? lastSprint.seq + 1 : 1;
 
-    const [sprint] = await db
-      .insert(sprints)
-      .values({
-        projectId,
-        name: name.trim(),
-        goal: goal || null,
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
-        sequenceNumber,
-        status: 'future',
-      })
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [sprint] = await tx
+        .insert(sprints)
+        .values({
+          projectId,
+          name: name.trim(),
+          goal: goal || null,
+          startDate: startDate ? new Date(startDate) : null,
+          endDate: endDate ? new Date(endDate) : null,
+          sequenceNumber,
+          status: 'future',
+        })
+        .returning();
 
-    res.status(201).json({ message: 'Sprint created', sprint });
+      const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, projectId));
+
+      await logAuditAction({
+        actorId: req.user!.userId,
+        action: 'sprint.created',
+        entityType: 'sprint',
+        entityId: sprint.sprintId,
+        workspaceId: project?.workspaceId ?? undefined,
+        newValues: {
+          name: sprint.name,
+          goal: sprint.goal,
+          start_date: sprint.startDate?.toISOString().split('T')[0] ?? null,
+          end_date: sprint.endDate?.toISOString().split('T')[0] ?? null,
+          project_id: sprint.projectId
+        },
+        tx
+      });
+
+      return sprint;
+    });
+
+    res.status(201).json({ message: 'Sprint created', sprint: result });
   } catch (err) {
     console.error('Create sprint error:', err);
     res.status(500).json({ error: 'Server error creating sprint.' });
@@ -84,23 +111,63 @@ export const startSprint = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const [updated] = await db
-      .update(sprints)
-      .set({
-        status: 'active',
-        startDate: startDate ? new Date(startDate) : new Date(),
-        endDate: endDate ? new Date(endDate) : null,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(sprints.sprintId, sprintId), eq(sprints.status, 'future')))
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(sprints)
+        .set({
+          status: 'active',
+          startDate: startDate ? new Date(startDate) : new Date(),
+          endDate: endDate ? new Date(endDate) : null,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(sprints.sprintId, sprintId), eq(sprints.status, 'future')))
+        .returning();
 
-    if (!updated) {
+      if (!updated) return null;
+
+      const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, updated.projectId!));
+
+      await logAuditAction({
+        actorId: req.user!.userId,
+        action: 'sprint.started',
+        entityType: 'sprint',
+        entityId: updated.sprintId,
+        workspaceId: project?.workspaceId ?? undefined,
+        newValues: { status: 'active', start_date: updated.startDate?.toISOString().split('T')[0] },
+        oldValues: { status: 'future' },
+        tx
+      });
+
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Sprint not found or not in "future" status.' });
       return;
     }
 
-    res.json({ message: 'Sprint started', sprint: updated });
+    // --- NOTIFICATIONS ---
+    const actorId = req.user!.userId;
+    const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, actorId));
+    const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.projectId, projectId));
+    const members = await db.select({ userId: projectMembers.userId }).from(projectMembers).where(eq(projectMembers.projectId, projectId));
+    const [taskCount] = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(eq(tasks.sprintId, sprintId));
+
+    for (const member of members) {
+      if (member.userId !== actorId) {
+        await createNotification({
+          recipientId: member.userId as string,
+          actorId,
+          type: 'sprint_started',
+          entityType: 'sprint',
+          entityId: sprintId,
+          title: `${result.name} has started in ${project?.name || 'Project'}`,
+          body: `${actor?.name || 'Someone'} started ${result.name}. Ends ${result.endDate ? result.endDate.toISOString().split('T')[0] : 'TBD'}. ${taskCount?.count || 0} tasks in sprint.`,
+        });
+      }
+    }
+
+    res.json({ message: 'Sprint started', sprint: result });
   } catch (err) {
     console.error('Start sprint error:', err);
     res.status(500).json({ error: 'Server error starting sprint.' });
@@ -113,6 +180,18 @@ export const closeSprint = async (req: Request, res: Response): Promise<void> =>
   try {
     const { sprintId } = req.params as Record<string, string>;
     const userId = req.user!.userId;
+
+    const [sprint] = await db.select({ status: sprints.status, name: sprints.name, projectId: sprints.projectId }).from(sprints).where(eq(sprints.sprintId, sprintId));
+    
+    if (!sprint) {
+      res.status(404).json({ error: 'Sprint not found.' });
+      return;
+    }
+
+    if (sprint.status !== 'active') {
+      res.status(400).json({ error: 'Only an active sprint can be closed.' });
+      return;
+    }
 
     // Get tasks in this sprint and count completed ones
     const sprintTaskList = await db
@@ -127,7 +206,7 @@ export const closeSprint = async (req: Request, res: Response): Promise<void> =>
 
     await db.transaction(async (tx) => {
       // 1. Close the sprint
-      await tx
+      const [closedSprint] = await tx
         .update(sprints)
         .set({
           status: 'closed',
@@ -136,7 +215,8 @@ export const closeSprint = async (req: Request, res: Response): Promise<void> =>
           velocityIssues: completedCount,
           updatedAt: new Date(),
         })
-        .where(eq(sprints.sprintId, sprintId));
+        .where(eq(sprints.sprintId, sprintId))
+        .returning();
 
       // 2. Record task completion status in sprint_tasks junction
       for (const task of sprintTaskList) {
@@ -153,14 +233,45 @@ export const closeSprint = async (req: Request, res: Response): Promise<void> =>
         .map(t => t.taskId);
 
       if (incompleteTasks.length > 0) {
-        for (const taskId of incompleteTasks) {
-          await tx
-            .update(tasks)
-            .set({ sprintId: null, updatedAt: new Date() })
-            .where(eq(tasks.taskId, taskId));
-        }
+        await tx
+          .update(tasks)
+          .set({ sprintId: null, updatedAt: new Date() })
+          .where(inArray(tasks.taskId, incompleteTasks));
       }
+
+      const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, closedSprint.projectId!));
+
+      await logAuditAction({
+        actorId: userId,
+        action: 'sprint.closed',
+        entityType: 'sprint',
+        entityId: sprintId,
+        workspaceId: project?.workspaceId ?? undefined,
+        newValues: { status: 'closed', closed_at: closedSprint.closedAt?.toISOString(), velocity_issues: completedCount, incomplete_tasks_moved_to: 'backlog' },
+        oldValues: { status: 'active' },
+        tx
+      });
     });
+
+    // --- NOTIFICATIONS ---
+    const actorId = req.user!.userId;
+    const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, actorId));
+    const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.projectId, sprint.projectId!));
+    const members = await db.select({ userId: projectMembers.userId }).from(projectMembers).where(eq(projectMembers.projectId, sprint.projectId!));
+
+    for (const member of members) {
+      if (member.userId !== actorId) {
+        await createNotification({
+          recipientId: member.userId as string,
+          actorId,
+          type: 'sprint_closed',
+          entityType: 'sprint',
+          entityId: sprintId,
+          title: `${sprint.name} was closed in ${project?.name || 'Project'}`,
+          body: `${actor?.name || 'Someone'} closed ${sprint.name}. ${completedCount} of ${sprintTaskList.length} tasks completed.`,
+        });
+      }
+    }
 
     res.json({
       message: 'Sprint closed',
@@ -189,18 +300,56 @@ export const updateSprint = async (req: Request, res: Response): Promise<void> =
     if (startDate !== undefined) updateData.startDate = startDate ? new Date(startDate) : null;
     if (endDate !== undefined) updateData.endDate = endDate ? new Date(endDate) : null;
 
-    const [updated] = await db
-      .update(sprints)
-      .set(updateData)
-      .where(eq(sprints.sprintId, sprintId))
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [oldSprint] = await tx.select().from(sprints).where(eq(sprints.sprintId, sprintId)).limit(1);
 
-    if (!updated) {
+      const [updated] = await tx
+        .update(sprints)
+        .set(updateData)
+        .where(eq(sprints.sprintId, sprintId))
+        .returning();
+
+      if (!updated || !oldSprint) return null;
+
+      const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, updated.projectId!));
+      const workspaceId = project?.workspaceId ?? undefined;
+
+      const actorId = req.user!.userId;
+      const eType = 'sprint';
+      const eId = updated.sprintId;
+
+      if (oldSprint.name !== updated.name) {
+        await logAuditAction({
+          actorId, action: 'sprint.name_changed', entityType: eType, entityId: eId, workspaceId,
+          newValues: { name: updated.name }, oldValues: { name: oldSprint.name }, tx
+        });
+      }
+      if (oldSprint.goal !== updated.goal) {
+        await logAuditAction({
+          actorId, action: 'sprint.goal_changed', entityType: eType, entityId: eId, workspaceId,
+          newValues: { goal: updated.goal }, oldValues: { goal: oldSprint.goal }, tx
+        });
+      }
+      const oldStart = oldSprint.startDate?.toISOString().split('T')[0];
+      const newStart = updated.startDate?.toISOString().split('T')[0];
+      const oldEnd = oldSprint.endDate?.toISOString().split('T')[0];
+      const newEnd = updated.endDate?.toISOString().split('T')[0];
+      if (oldStart !== newStart || oldEnd !== newEnd) {
+        await logAuditAction({
+          actorId, action: 'sprint.dates_changed', entityType: eType, entityId: eId, workspaceId,
+          newValues: { start_date: newStart, end_date: newEnd }, oldValues: { start_date: oldStart, end_date: oldEnd }, tx
+        });
+      }
+
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Sprint not found.' });
       return;
     }
 
-    res.json({ message: 'Sprint updated', sprint: updated });
+    res.json({ message: 'Sprint updated', sprint: result });
   } catch (err) {
     console.error('Update sprint error:', err);
     res.status(500).json({ error: 'Server error updating sprint.' });
@@ -213,18 +362,38 @@ export const deleteSprint = async (req: Request, res: Response): Promise<void> =
   try {
     const { sprintId } = req.params as Record<string, string>;
 
-    // Unlink all tasks from this sprint first
-    await db
-      .update(tasks)
-      .set({ sprintId: null, updatedAt: new Date() })
-      .where(eq(tasks.sprintId, sprintId));
+    const result = await db.transaction(async (tx) => {
+      const [sprint] = await tx.select().from(sprints).where(eq(sprints.sprintId, sprintId)).limit(1);
+      if (!sprint) return null;
 
-    const [deleted] = await db
-      .delete(sprints)
-      .where(eq(sprints.sprintId, sprintId))
-      .returning({ sprintId: sprints.sprintId });
+      // Unlink all tasks from this sprint first
+      await tx
+        .update(tasks)
+        .set({ sprintId: null, updatedAt: new Date() })
+        .where(eq(tasks.sprintId, sprintId));
 
-    if (!deleted) {
+      const [deleted] = await tx
+        .delete(sprints)
+        .where(eq(sprints.sprintId, sprintId))
+        .returning({ sprintId: sprints.sprintId });
+
+      const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, sprint.projectId!));
+
+      await logAuditAction({
+        actorId: req.user!.userId,
+        action: 'sprint.deleted',
+        entityType: 'sprint',
+        entityId: deleted.sprintId,
+        workspaceId: project?.workspaceId ?? undefined,
+        newValues: null,
+        oldValues: { name: sprint.name, status: sprint.status },
+        tx
+      });
+
+      return deleted;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Sprint not found.' });
       return;
     }
@@ -249,19 +418,11 @@ export const addTaskToSprint = async (req: Request, res: Response): Promise<void
     }
 
     // Verify the task exists
-    const [task] = await db
-      .select({ taskId: tasks.taskId })
-      .from(tasks)
-      .where(eq(tasks.taskId, taskId))
-      .limit(1);
-
-    if (!task) {
-      res.status(404).json({ error: 'Task not found.' });
-      return;
-    }
-
     // Add to sprint_tasks junction and update task.sprint_id
     await db.transaction(async (tx) => {
+      const [task] = await tx.select({ taskId: tasks.taskId, taskKey: tasks.taskKey }).from(tasks).where(eq(tasks.taskId, taskId)).limit(1);
+      if (!task) return null;
+
       await tx.insert(sprintTasks).values({
         sprintId,
         taskId,
@@ -272,6 +433,20 @@ export const addTaskToSprint = async (req: Request, res: Response): Promise<void
         .update(tasks)
         .set({ sprintId, updatedAt: new Date() })
         .where(eq(tasks.taskId, taskId));
+
+      const [sprint] = await tx.select().from(sprints).where(eq(sprints.sprintId, sprintId)).limit(1);
+      if (sprint) {
+        const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, sprint.projectId!));
+        await logAuditAction({
+          actorId: req.user!.userId,
+          action: 'sprint.task_added',
+          entityType: 'sprint',
+          entityId: sprintId,
+          workspaceId: project?.workspaceId ?? undefined,
+          newValues: { task_id: task.taskId, task_key: task.taskKey, added_by: req.user!.userId },
+          tx
+        });
+      }
     });
 
     res.status(201).json({ message: 'Task added to sprint' });
@@ -288,6 +463,8 @@ export const removeTaskFromSprint = async (req: Request, res: Response): Promise
     const { sprintId, taskId } = req.params as Record<string, string>;
 
     await db.transaction(async (tx) => {
+      const [task] = await tx.select({ taskId: tasks.taskId, taskKey: tasks.taskKey }).from(tasks).where(eq(tasks.taskId, taskId)).limit(1);
+
       await tx
         .delete(sprintTasks)
         .where(and(eq(sprintTasks.sprintId, sprintId), eq(sprintTasks.taskId, taskId)));
@@ -296,6 +473,23 @@ export const removeTaskFromSprint = async (req: Request, res: Response): Promise
         .update(tasks)
         .set({ sprintId: null, updatedAt: new Date() })
         .where(eq(tasks.taskId, taskId));
+
+      if (task) {
+        const [sprint] = await tx.select().from(sprints).where(eq(sprints.sprintId, sprintId)).limit(1);
+        if (sprint) {
+          const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, sprint.projectId!));
+          await logAuditAction({
+            actorId: req.user!.userId,
+            action: 'sprint.task_removed',
+            entityType: 'sprint',
+            entityId: sprintId,
+            workspaceId: project?.workspaceId ?? undefined,
+            newValues: null,
+            oldValues: { task_id: task.taskId, task_key: task.taskKey },
+            tx
+          });
+        }
+      }
     });
 
     res.json({ message: 'Task removed from sprint' });

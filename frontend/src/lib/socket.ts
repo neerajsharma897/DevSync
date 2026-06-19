@@ -7,10 +7,21 @@ class SocketClient {
 
   connect() {
     if (!this.socket) {
+      // Retrieve the token from Zustand's persisted store
+      let token = '';
+      try {
+        const authStorage = localStorage.getItem('auth-storage');
+        if (authStorage) {
+          const parsed = JSON.parse(authStorage);
+          token = parsed.state?.token || '';
+        }
+      } catch (err) {}
+
       this.socket = io(SOCKET_URL, {
         withCredentials: true,
         transports: ['websocket', 'polling'],
         autoConnect: true,
+        auth: { token }
       });
 
       this.socket.on('connect', () => {

@@ -3,9 +3,11 @@ import crypto from 'node:crypto';
 import { db } from '../../config/db.js';
 import { githubConnections, githubCommits, githubCiStatus } from '../../db/schema/github.js';
 import { tasks } from '../../db/schema/tasks.js';
-import { projects } from '../../db/schema/projects.js';
+import { projects, projectMembers } from '../../db/schema/projects.js';
 import { users } from '../../db/schema/auth.js';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, inArray } from 'drizzle-orm';
+import { logAuditAction } from '../audit/audit.controller.js';
+import { createNotification } from '../notifications/notifications.controller.js';
 
 // ─── HELPER: Verify GitHub Webhook Signature ─────────────────────────────────
 const verifySignature = (req: Request, secret: string) => {
@@ -52,20 +54,36 @@ export const connectGithubRepo = async (req: Request, res: Response): Promise<vo
     // Generate a webhook secret
     const webhookSecret = crypto.randomBytes(32).toString('hex');
 
-    const [connection] = await db
-      .insert(githubConnections)
-      .values({
-        projectId,
-        connectedBy: userId,
-        githubRepoFullName,
-        defaultBranch: defaultBranch || 'main',
-        webhookSecret, // In production, this should be encrypted at rest
-      })
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [connection] = await tx
+        .insert(githubConnections)
+        .values({
+          projectId,
+          connectedBy: userId,
+          githubRepoFullName,
+          defaultBranch: defaultBranch || 'main',
+          webhookSecret, // In production, this should be encrypted at rest
+        })
+        .returning();
+
+      const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, projectId)).limit(1);
+
+      await logAuditAction({
+        actorId: userId,
+        action: 'github.repo_linked',
+        entityType: 'project',
+        entityId: projectId,
+        workspaceId: project?.workspaceId ?? undefined,
+        newValues: { repo_full_name: githubRepoFullName },
+        tx
+      });
+
+      return connection;
+    });
 
     res.status(201).json({
       message: 'GitHub connected. Please configure the webhook on GitHub using the provided secret.',
-      connection,
+      connection: result,
       webhookUrl: `${process.env.FRONTEND_URL?.replace('5173', '3001')}/api/webhooks/github`, // Example URL
     });
   } catch (err) {
@@ -215,6 +233,25 @@ const handlePushEvent = async (projectId: string, payload: any) => {
         .update(tasks)
         .set({ linkedCommitsCount: sql`linked_commits_count + 1` })
         .where(eq(tasks.taskId, insertedCommit.taskId));
+
+      const [task] = await db.select({ taskKey: tasks.taskKey, assigneeId: tasks.assigneeId, reporterId: tasks.reporterId }).from(tasks).where(eq(tasks.taskId, insertedCommit.taskId));
+      if (task) {
+        const notifyCommit = async (recipientId: string | null) => {
+          if (recipientId && recipientId !== authorUserId) {
+            await createNotification({
+              recipientId: recipientId as string,
+              actorId: authorUserId || undefined,
+              type: 'commit_linked',
+              entityType: 'task',
+              entityId: insertedCommit.taskId as string,
+              title: `New commit linked to ${task.taskKey}`,
+              body: `${commit.author?.name || 'Someone'} pushed '${commit.message.split('\n')[0].slice(0, 200)}' on ${branchName || 'branch'}`,
+            });
+          }
+        };
+        await notifyCommit(task.assigneeId);
+        if (task.reporterId !== task.assigneeId) await notifyCommit(task.reporterId);
+      }
     }
   }
 };
@@ -227,7 +264,7 @@ const handleWorkflowRunEvent = async (projectId: string, payload: any) => {
   const runId = workflowRun.id;
 
   const [existing] = await db
-    .select({ id: githubCiStatus.id })
+    .select({ id: githubCiStatus.id, status: githubCiStatus.status, conclusion: githubCiStatus.conclusion })
     .from(githubCiStatus)
     .where(and(eq(githubCiStatus.projectId, projectId), eq(githubCiStatus.runId, runId)))
     .limit(1);
@@ -253,6 +290,32 @@ const handleWorkflowRunEvent = async (projectId: string, payload: any) => {
       htmlUrl: workflowRun.html_url,
       triggeredAt: new Date(workflowRun.created_at),
     });
+  }
+
+  // --- NOTIFICATIONS ---
+  if (workflowRun.status === 'completed' && workflowRun.conclusion === 'failure') {
+    let shouldNotify = false;
+    if (!existing) {
+      shouldNotify = true;
+    } else if (existing.status !== 'completed' || existing.conclusion !== 'failure') {
+      shouldNotify = true;
+    }
+
+    if (shouldNotify) {
+      const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.projectId, projectId));
+      const members = await db.select({ userId: projectMembers.userId }).from(projectMembers).where(and(eq(projectMembers.projectId, projectId), inArray(projectMembers.role, ['project_admin', 'developer'])));
+      
+      for (const member of members) {
+        await createNotification({
+          recipientId: member.userId as string,
+          type: 'ci_failed',
+          entityType: 'project',
+          entityId: projectId,
+          title: `CI failed in ${project?.name || 'Project'}`,
+          body: `Workflow '${workflowRun.name}' failed on ${workflowRun.head_branch} (commit ${workflowRun.head_sha.substring(0, 7)})`,
+        });
+      }
+    }
   }
 };
 
@@ -319,12 +382,33 @@ export const disconnectGithubRepo = async (req: Request, res: Response): Promise
   try {
     const { projectId } = req.params as Record<string, string>;
 
-    const [deleted] = await db
-      .delete(githubConnections)
-      .where(eq(githubConnections.projectId, projectId))
-      .returning({ connectionId: githubConnections.connectionId });
+    const result = await db.transaction(async (tx) => {
+      const [existing] = await tx.select({ githubRepoFullName: githubConnections.githubRepoFullName }).from(githubConnections).where(eq(githubConnections.projectId, projectId)).limit(1);
+      
+      const [deleted] = await tx
+        .delete(githubConnections)
+        .where(eq(githubConnections.projectId, projectId))
+        .returning({ connectionId: githubConnections.connectionId });
 
-    if (!deleted) {
+      if (deleted) {
+        const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, projectId)).limit(1);
+
+        await logAuditAction({
+          actorId: req.user!.userId,
+          action: 'github.repo_unlinked',
+          entityType: 'project',
+          entityId: projectId,
+          workspaceId: project?.workspaceId ?? undefined,
+          newValues: null,
+          oldValues: { repo_full_name: existing?.githubRepoFullName },
+          tx
+        });
+      }
+
+      return deleted;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'No GitHub connection found for this project.' });
       return;
     }

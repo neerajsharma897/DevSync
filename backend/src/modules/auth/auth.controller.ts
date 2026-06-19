@@ -7,6 +7,7 @@ import { users, refreshTokens } from '../../db/schema/auth.js';
 import { env } from '../../config/env.js';
 import { eq, and } from 'drizzle-orm';
 import { supabase } from '../../config/supabase.js';
+import { logAuditAction } from '../audit/audit.controller.js';
 
 // ─── Token Helpers ───────────────────────────────────────────────────────────
 
@@ -71,20 +72,28 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const passwordHash = await bcrypt.hash(password, salt);
 
     // Create user
-    const [newUser] = await db
-      .insert(users)
-      .values({
-        email: email.toLowerCase().trim(),
-        passwordHash,
-        fullName: fullName.trim(),
-        displayName: displayName ? displayName.trim() : null,
-      })
-      .returning({
-        userId: users.userId,
-        email: users.email,
-        fullName: users.fullName,
-        displayName: users.displayName,
+    const newUser = await db.transaction(async (tx) => {
+      const [u] = await tx
+        .insert(users)
+        .values({
+          email: email.toLowerCase().trim(),
+          passwordHash,
+          fullName: fullName.trim(),
+          displayName: displayName ? displayName.trim() : null,
+        })
+        .returning({
+          userId: users.userId,
+          email: users.email,
+          fullName: users.fullName,
+          displayName: users.displayName,
+        });
+
+      await logAuditAction({
+        actorId: u.userId, action: 'user.registered', entityType: 'user', entityId: u.userId,
+        newValues: { email: u.email, full_name: u.fullName, auth_method: 'email' }, tx
       });
+      return u;
+    });
 
     // Generate tokens
     const accessToken = generateAccessToken(newUser);
@@ -140,6 +149,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
+      await logAuditAction({ actorId: user.userId, action: 'user.login_failed', entityType: 'user', entityId: user.userId, newValues: { reason: 'invalid_password' } });
       res.status(401).json({ error: 'Invalid email or password.' });
       return;
     }
@@ -157,10 +167,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     });
 
     // Update presence
-    await db
-      .update(users)
-      .set({ presence: 'online', lastActiveAt: new Date() })
-      .where(eq(users.userId, user.userId));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ presence: 'online', lastActiveAt: new Date() })
+        .where(eq(users.userId, user.userId));
+
+      await logAuditAction({ actorId: user.userId, action: 'user.login', entityType: 'user', entityId: user.userId, newValues: { method: 'email', ip: req.ip || 'unknown' }, tx });
+    });
 
     res.json({
       message: 'Login successful',
@@ -269,10 +283,14 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
       if (revoked && revoked.userId) {
         const userId = revoked.userId;
         // Set presence to offline
-        await db
-          .update(users)
-          .set({ presence: 'offline', lastActiveAt: new Date() })
-          .where(eq(users.userId, userId));
+        await db.transaction(async (tx) => {
+          await tx
+            .update(users)
+            .set({ presence: 'offline', lastActiveAt: new Date() })
+            .where(eq(users.userId, userId));
+
+          await logAuditAction({ actorId: userId, action: 'user.logout', entityType: 'user', entityId: userId, tx });
+        });
       }
     }
 
@@ -315,6 +333,7 @@ export const oauthCallback = async (req: Request, res: Response): Promise<void> 
     }
 
     // Find if user already exists in our Drizzle DB
+    let isNewUser = false;
     let [user] = await db
       .select()
       .from(users)
@@ -323,20 +342,23 @@ export const oauthCallback = async (req: Request, res: Response): Promise<void> 
 
     if (!user) {
       // Auto-register the user if they don't exist
+      isNewUser = true;
       const fullName = sbUser.user_metadata?.full_name || email.split('@')[0];
       const avatarUrl = sbUser.user_metadata?.avatar_url || null;
 
-      const [newUser] = await db
-        .insert(users)
-        .values({
-          email,
-          fullName,
-          avatarUrl,
-          // No password hash, as they use OAuth
-        })
-        .returning();
-      
-      user = newUser;
+      await db.transaction(async (tx) => {
+        const [newUser] = await tx
+          .insert(users)
+          .values({ email, fullName, avatarUrl })
+          .returning();
+        
+        user = newUser;
+
+        await logAuditAction({
+          actorId: user.userId, action: 'user.registered_via_github', entityType: 'user', entityId: user.userId,
+          newValues: { email: user.email, full_name: user.fullName, auth_method: 'github' }, tx
+        });
+      });
     }
 
     if (user.deletedAt) {
@@ -356,10 +378,16 @@ export const oauthCallback = async (req: Request, res: Response): Promise<void> 
     });
 
     // Update presence
-    await db
-      .update(users)
-      .set({ presence: 'online', lastActiveAt: new Date() })
-      .where(eq(users.userId, user.userId));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ presence: 'online', lastActiveAt: new Date() })
+        .where(eq(users.userId, user.userId));
+
+      if (!isNewUser) {
+        await logAuditAction({ actorId: user.userId, action: 'user.login', entityType: 'user', entityId: user.userId, newValues: { method: 'github', ip: req.ip || 'unknown' }, tx });
+      }
+    });
 
     res.json({
       message: 'OAuth Login successful',

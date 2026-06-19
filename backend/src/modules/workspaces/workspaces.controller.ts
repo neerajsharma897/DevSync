@@ -3,6 +3,8 @@ import { db } from '../../config/db.js';
 import { workspaces, workspaceMembers } from '../../db/schema/workspaces.js';
 import { users } from '../../db/schema/auth.js';
 import { eq, and, isNull } from 'drizzle-orm';
+import { logAuditAction } from '../audit/audit.controller.js';
+import { createNotification } from '../notifications/notifications.controller.js';
 
 // ─── Helper: generate a URL-safe slug from a workspace name ──────────────────
 const generateSlug = (name: string): string => {
@@ -50,6 +52,16 @@ export const createWorkspace = async (req: Request, res: Response): Promise<void
         userId,
         role: 'owner',
         state: 'active',
+      });
+
+      await logAuditAction({
+        actorId: userId,
+        action: 'workspace.created',
+        entityType: 'workspace',
+        entityId: workspace.workspaceId,
+        workspaceId: workspace.workspaceId,
+        newValues: { name: workspace.name, slug: workspace.slug, owner_id: workspace.ownerId },
+        tx
       });
 
       return workspace;
@@ -185,18 +197,43 @@ export const updateWorkspace = async (req: Request, res: Response): Promise<void
     if (description !== undefined) updateData.description = description;
     if (iconUrl !== undefined) updateData.iconUrl = iconUrl;
 
-    const [updated] = await db
-      .update(workspaces)
-      .set(updateData)
-      .where(and(eq(workspaces.workspaceId, workspaceId), isNull(workspaces.deletedAt)))
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [oldWorkspace] = await tx.select().from(workspaces).where(eq(workspaces.workspaceId, workspaceId)).limit(1);
 
-    if (!updated) {
+      const [updated] = await tx
+        .update(workspaces)
+        .set(updateData)
+        .where(and(eq(workspaces.workspaceId, workspaceId), isNull(workspaces.deletedAt)))
+        .returning();
+
+      if (!updated || !oldWorkspace) return null;
+
+      const actorId = req.user!.userId;
+      const eType = 'workspace';
+      const eId = workspaceId;
+
+      if (oldWorkspace.name !== updated.name) {
+        await logAuditAction({ actorId, action: 'workspace.name_changed', entityType: eType, entityId: eId, workspaceId, newValues: { name: updated.name }, oldValues: { name: oldWorkspace.name }, tx });
+      }
+      if (oldWorkspace.slug !== updated.slug) {
+        await logAuditAction({ actorId, action: 'workspace.slug_changed', entityType: eType, entityId: eId, workspaceId, newValues: { slug: updated.slug }, oldValues: { slug: oldWorkspace.slug }, tx });
+      }
+      if (oldWorkspace.description !== updated.description) {
+        await logAuditAction({ actorId, action: 'workspace.description_changed', entityType: eType, entityId: eId, workspaceId, newValues: { description: updated.description }, oldValues: { description: oldWorkspace.description }, tx });
+      }
+      if (oldWorkspace.iconUrl !== updated.iconUrl) {
+        await logAuditAction({ actorId, action: 'workspace.icon_changed', entityType: eType, entityId: eId, workspaceId, newValues: { icon_url: updated.iconUrl }, oldValues: { icon_url: oldWorkspace.iconUrl }, tx });
+      }
+
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Workspace not found.' });
       return;
     }
 
-    res.json({ message: 'Workspace updated', workspace: updated });
+    res.json({ message: 'Workspace updated', workspace: result });
   } catch (err) {
     console.error('Update workspace error:', err);
     res.status(500).json({ error: 'Server error updating workspace.' });
@@ -209,13 +246,31 @@ export const deleteWorkspace = async (req: Request, res: Response): Promise<void
   try {
     const { workspaceId } = req.params as Record<string, string>;
 
-    const [deleted] = await db
-      .update(workspaces)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(workspaces.workspaceId, workspaceId), isNull(workspaces.deletedAt)))
-      .returning({ workspaceId: workspaces.workspaceId });
+    const result = await db.transaction(async (tx) => {
+      const [oldWorkspace] = await tx.select().from(workspaces).where(and(eq(workspaces.workspaceId, workspaceId), isNull(workspaces.deletedAt))).limit(1);
+      if (!oldWorkspace) return null;
 
-    if (!deleted) {
+      const [deleted] = await tx
+        .update(workspaces)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(eq(workspaces.workspaceId, workspaceId))
+        .returning({ workspaceId: workspaces.workspaceId });
+
+      await logAuditAction({
+        actorId: req.user!.userId,
+        action: 'workspace.deleted',
+        entityType: 'workspace',
+        entityId: workspaceId,
+        workspaceId,
+        newValues: null,
+        oldValues: { name: oldWorkspace.name, slug: oldWorkspace.slug },
+        tx
+      });
+
+      return deleted;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Workspace not found.' });
       return;
     }
@@ -276,22 +331,51 @@ export const inviteMember = async (req: Request, res: Response): Promise<void> =
         return;
       }
       // Re-activate a previously deactivated member
-      await db
-        .update(workspaceMembers)
-        .set({ state: 'active', role: memberRole, joinedAt: new Date() })
-        .where(eq(workspaceMembers.id, existing.id));
+      const result = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(workspaceMembers)
+          .set({ state: 'active', role: memberRole, joinedAt: new Date() })
+          .where(eq(workspaceMembers.id, existing.id))
+          .returning();
+
+        await logAuditAction({
+          actorId: inviterId, action: 'workspace_member.reactivated', entityType: 'workspace_member', entityId: existing.id, workspaceId,
+          newValues: { state: 'active' }, oldValues: { state: 'deactivated' }, tx
+        });
+        return updated;
+      });
 
       res.json({ message: 'Member re-activated', user: targetUser });
       return;
     }
 
     // Create membership
-    await db.insert(workspaceMembers).values({
-      workspaceId,
-      userId: targetUser.userId,
-      role: memberRole,
-      invitedBy: inviterId,
-      state: 'invited', // Changed from active to invited
+    await db.transaction(async (tx) => {
+      const [member] = await tx.insert(workspaceMembers).values({
+        workspaceId,
+        userId: targetUser.userId,
+        role: memberRole,
+        invitedBy: inviterId,
+        state: 'invited', // Changed from active to invited
+      }).returning();
+
+      await logAuditAction({
+        actorId: inviterId, action: 'workspace_member.invited', entityType: 'workspace_member', entityId: member.id, workspaceId,
+        newValues: { user_id: targetUser.userId, email: targetUser.email, role: memberRole, invited_by: inviterId }, tx
+      });
+    });
+
+    const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, inviterId));
+    const [workspace] = await db.select({ name: workspaces.name }).from(workspaces).where(eq(workspaces.workspaceId, workspaceId));
+
+    await createNotification({
+      recipientId: targetUser.userId,
+      actorId: inviterId,
+      type: 'workspace_invited',
+      entityType: 'workspace',
+      entityId: workspaceId,
+      title: `You were invited to ${workspace?.name || 'Workspace'}`,
+      body: `${actor?.name || 'Someone'} invited you to join ${workspace?.name || 'Workspace'} as ${memberRole.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}`,
     });
 
     res.status(201).json({ message: 'Member invited successfully', user: targetUser });
@@ -325,6 +409,16 @@ export const acceptInvite = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
+    await logAuditAction({
+      actorId: currentUserId,
+      action: 'workspace_member.invite_accepted',
+      entityType: 'workspace_member',
+      entityId: updated.id,
+      workspaceId: workspaceId,
+      oldValues: { state: 'invited' },
+      newValues: { state: 'active' }
+    });
+
     res.json({ message: 'Invite accepted', member: updated });
   } catch (err) {
     console.error('Accept invite error:', err);
@@ -351,43 +445,61 @@ export const updateMemberRole = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const [updated] = await db
-      .update(workspaceMembers)
-      .set({ role })
-      .where(
-        and(
-          eq(workspaceMembers.workspaceId, workspaceId),
-          eq(workspaceMembers.userId, userId),
-          eq(workspaceMembers.state, 'active')
-        )
-      )
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [oldMember] = await tx.select().from(workspaceMembers).where(and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.state, 'active')
+      )).limit(1);
 
-    if (!updated) {
+      if (!oldMember) return null;
+
+      const [updated] = await tx
+        .update(workspaceMembers)
+        .set({ role })
+        .where(eq(workspaceMembers.id, oldMember.id))
+        .returning();
+
+      await logAuditAction({
+        actorId: currentUserId, action: 'workspace_member.role_changed', entityType: 'workspace_member', entityId: updated.id, workspaceId,
+        newValues: { role: updated.role, user_id: updated.userId }, oldValues: { role: oldMember.role, user_id: oldMember.userId }, tx
+      });
+
+      // If promoting to owner, transfer ownership
+      if (role === 'owner') {
+        await tx
+          .update(workspaces)
+          .set({ ownerId: userId, updatedAt: new Date() })
+          .where(eq(workspaces.workspaceId, workspaceId));
+
+        // Demote current owner to admin
+        const [demoted] = await tx
+          .update(workspaceMembers)
+          .set({ role: 'admin' })
+          .where(
+            and(
+              eq(workspaceMembers.workspaceId, workspaceId),
+              eq(workspaceMembers.userId, currentUserId)
+            )
+          ).returning();
+
+        if (demoted) {
+          await logAuditAction({
+            actorId: currentUserId, action: 'workspace_member.role_changed', entityType: 'workspace_member', entityId: demoted.id, workspaceId,
+            newValues: { role: demoted.role, user_id: demoted.userId }, oldValues: { role: 'owner', user_id: demoted.userId }, tx
+          });
+        }
+      }
+
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Member not found in this workspace.' });
       return;
     }
 
-    // If promoting to owner, transfer ownership
-    if (role === 'owner') {
-      await db
-        .update(workspaces)
-        .set({ ownerId: userId, updatedAt: new Date() })
-        .where(eq(workspaces.workspaceId, workspaceId));
-
-      // Demote current owner to admin
-      await db
-        .update(workspaceMembers)
-        .set({ role: 'admin' })
-        .where(
-          and(
-            eq(workspaceMembers.workspaceId, workspaceId),
-            eq(workspaceMembers.userId, currentUserId)
-          )
-        );
-    }
-
-    res.json({ message: 'Member role updated', member: updated });
+    res.json({ message: 'Member role updated', member: result });
   } catch (err) {
     console.error('Update member role error:', err);
     res.status(500).json({ error: 'Server error updating member role.' });
@@ -416,19 +528,36 @@ export const removeMember = async (req: Request, res: Response): Promise<void> =
     // Allow self-leave (user removing themselves)
     // For others, the role middleware already ensures admin/owner access
 
-    const [removed] = await db
-      .update(workspaceMembers)
-      .set({ state: 'deactivated' })
-      .where(
-        and(
-          eq(workspaceMembers.workspaceId, workspaceId),
-          eq(workspaceMembers.userId, userId),
-          eq(workspaceMembers.state, 'active')
-        )
-      )
-      .returning({ id: workspaceMembers.id });
+    const result = await db.transaction(async (tx) => {
+      const [oldMember] = await tx.select().from(workspaceMembers).where(and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.state, 'active')
+      )).limit(1);
 
-    if (!removed) {
+      if (!oldMember) return null;
+
+      const [removed] = await tx
+        .update(workspaceMembers)
+        .set({ state: 'deactivated' })
+        .where(eq(workspaceMembers.id, oldMember.id))
+        .returning({ id: workspaceMembers.id, userId: workspaceMembers.userId, role: workspaceMembers.role });
+
+      await logAuditAction({
+        actorId: currentUserId,
+        action: 'workspace_member.deactivated',
+        entityType: 'workspace_member',
+        entityId: removed.id,
+        workspaceId,
+        newValues: { state: 'deactivated' },
+        oldValues: { state: 'active' },
+        tx
+      });
+
+      return removed;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Member not found in this workspace.' });
       return;
     }

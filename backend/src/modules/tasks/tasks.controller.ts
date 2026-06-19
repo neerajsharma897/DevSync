@@ -2,9 +2,12 @@ import { Request, Response } from 'express';
 import { db } from '../../config/db.js';
 import { tasks } from '../../db/schema/tasks.js';
 import { projects, projectMembers } from '../../db/schema/projects.js';
+import { sprints } from '../../db/schema/sprints.js';
 import { users } from '../../db/schema/auth.js';
 import { messages } from '../../db/schema/channels.js';
 import { eq, and, isNull, asc, desc, sql, or, ilike } from 'drizzle-orm';
+import { logAuditAction } from '../audit/audit.controller.js';
+import { createNotification } from '../notifications/notifications.controller.js';
 
 // ─── Lexorank helpers ────────────────────────────────────────────────────────
 // Simplified mid-string calculation for board ordering
@@ -47,7 +50,7 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
         .update(projects)
         .set({ issueCounter: sql`issue_counter + 1`, updatedAt: new Date() })
         .where(eq(projects.projectId, projectId))
-        .returning({ issueCounter: projects.issueCounter, key: projects.key });
+        .returning({ issueCounter: projects.issueCounter, key: projects.key, workspaceId: projects.workspaceId });
 
       if (!project) {
         throw new Error('PROJECT_NOT_FOUND');
@@ -122,8 +125,36 @@ export const createTask = async (req: Request, res: Response): Promise<void> => 
         })
         .returning();
 
+      // 6. Write audit log
+      await logAuditAction({
+        actorId: userId,
+        action: 'task.created',
+        entityType: 'task',
+        entityId: task.taskId,
+        workspaceId: project.workspaceId ?? undefined,
+        newValues: { task_key: task.taskKey, title: task.title, type: task.issueType, status: task.status, priority: task.priority, reporter_id: task.reporterId, project_id: task.projectId },
+        tx
+      });
+
       return task;
     });
+
+    if (result.assigneeId && result.assigneeId !== userId) {
+      const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, userId));
+      await createNotification({
+        recipientId: result.assigneeId,
+        actorId: userId,
+        type: 'task_assigned',
+        entityType: 'task',
+        entityId: result.taskId,
+        title: `You were assigned ${result.taskKey}`,
+        body: `${actor?.name || 'Someone'} assigned you to '${result.title}'`,
+      });
+    }
+
+    if (result.descriptionText) {
+      await notifyTaskMentions(result.descriptionText, userId, result.taskId, result.taskKey, projectId);
+    }
 
     res.status(201).json({ message: 'Task created', task: result });
   } catch (err: any) {
@@ -236,6 +267,8 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
       parentTaskId, epicId, sprintId,
     } = req.body;
 
+    const [oldTask] = await db.select().from(tasks).where(eq(tasks.taskId, taskId)).limit(1);
+
     const updateData: Record<string, any> = { updatedAt: new Date() };
 
     if (title !== undefined) updateData.title = title.trim();
@@ -251,18 +284,210 @@ export const updateTask = async (req: Request, res: Response): Promise<void> => 
     if (epicId !== undefined) updateData.epicId = epicId || null;
     if (sprintId !== undefined) updateData.sprintId = sprintId || null;
 
-    const [updated] = await db
-      .update(tasks)
-      .set(updateData)
-      .where(and(eq(tasks.taskId, taskId), isNull(tasks.deletedAt)))
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(tasks)
+        .set(updateData)
+        .where(and(eq(tasks.taskId, taskId), isNull(tasks.deletedAt)))
+        .returning();
 
-    if (!updated) {
+      if (!updated) return null;
+
+      const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, updated.projectId!));
+      const workspaceId = project?.workspaceId ?? undefined;
+
+      if (oldTask) {
+        const actorId = req.user!.userId;
+        const eType = 'task';
+        const eId = updated.taskId;
+
+        if (oldTask.title !== updated.title) {
+          await logAuditAction({
+            actorId, action: 'task.title_changed', entityType: eType, entityId: eId, workspaceId,
+            newValues: { title: updated.title }, oldValues: { title: oldTask.title }, tx
+          });
+        }
+        if (oldTask.descriptionText !== updated.descriptionText) {
+          await logAuditAction({
+            actorId, action: 'task.description_changed', entityType: eType, entityId: eId, workspaceId,
+            newValues: { description_text: updated.descriptionText }, oldValues: { description_text: oldTask.descriptionText }, tx
+          });
+        }
+        if (oldTask.status !== updated.status) {
+          await logAuditAction({
+            actorId, action: 'task.status_changed', entityType: eType, entityId: eId, workspaceId,
+            newValues: { status: updated.status }, oldValues: { status: oldTask.status }, tx
+          });
+        }
+        if (oldTask.priority !== updated.priority) {
+          await logAuditAction({
+            actorId, action: 'task.priority_changed', entityType: eType, entityId: eId, workspaceId,
+            newValues: { priority: updated.priority }, oldValues: { priority: oldTask.priority }, tx
+          });
+        }
+        if (oldTask.issueType !== updated.issueType) {
+          await logAuditAction({
+            actorId, action: 'task.type_changed', entityType: eType, entityId: eId, workspaceId,
+            newValues: { issue_type: updated.issueType }, oldValues: { issue_type: oldTask.issueType }, tx
+          });
+        }
+        if (oldTask.assigneeId !== updated.assigneeId) {
+          let oldAssigneeName = null, newAssigneeName = null;
+          if (oldTask.assigneeId) {
+            const [u] = await tx.select({ name: users.fullName }).from(users).where(eq(users.userId, oldTask.assigneeId));
+            if (u) oldAssigneeName = u.name;
+          }
+          if (updated.assigneeId) {
+            const [u] = await tx.select({ name: users.fullName }).from(users).where(eq(users.userId, updated.assigneeId));
+            if (u) newAssigneeName = u.name;
+          }
+          await logAuditAction({
+            actorId, action: updated.assigneeId ? 'task.assignee_changed' : 'task.assignee_removed',
+            entityType: eType, entityId: eId, workspaceId,
+            newValues: { assignee_id: updated.assigneeId, assignee_name: newAssigneeName },
+            oldValues: { assignee_id: oldTask.assigneeId, assignee_name: oldAssigneeName }, tx
+          });
+        }
+        const oldDue = oldTask.dueDate ? oldTask.dueDate.toISOString().split('T')[0] : null;
+        const newDue = updated.dueDate ? updated.dueDate.toISOString().split('T')[0] : null;
+        if (oldDue !== newDue) {
+          await logAuditAction({
+            actorId, action: newDue ? 'task.due_date_changed' : 'task.due_date_removed',
+            entityType: eType, entityId: eId, workspaceId,
+            newValues: { due_date: newDue }, oldValues: { due_date: oldDue }, tx
+          });
+        }
+        const oldLabels = JSON.stringify(oldTask.labels || []);
+        const newLabels = JSON.stringify(updated.labels || []);
+        if (oldLabels !== newLabels) {
+          await logAuditAction({
+            actorId, action: 'task.labels_changed', entityType: eType, entityId: eId, workspaceId,
+            newValues: { labels: updated.labels || [] }, oldValues: { labels: oldTask.labels || [] }, tx
+          });
+        }
+        if (oldTask.sprintId !== updated.sprintId) {
+          let oldSprintName = null, newSprintName = null;
+          if (oldTask.sprintId) {
+            const [s] = await tx.select({ name: sprints.name }).from(sprints).where(eq(sprints.sprintId, oldTask.sprintId));
+            if (s) oldSprintName = s.name;
+          }
+          if (updated.sprintId) {
+            const [s] = await tx.select({ name: sprints.name }).from(sprints).where(eq(sprints.sprintId, updated.sprintId));
+            if (s) newSprintName = s.name;
+          }
+          await logAuditAction({
+            actorId, action: updated.sprintId ? 'task.sprint_changed' : 'task.moved_to_backlog',
+            entityType: eType, entityId: eId, workspaceId,
+            newValues: { sprint_id: updated.sprintId, sprint_name: newSprintName },
+            oldValues: { sprint_id: oldTask.sprintId, sprint_name: oldSprintName }, tx
+          });
+        }
+        if (oldTask.parentTaskId !== updated.parentTaskId) {
+          let oldParentKey = null, newParentKey = null;
+          if (oldTask.parentTaskId) {
+            const [t] = await tx.select({ key: tasks.taskKey }).from(tasks).where(eq(tasks.taskId, oldTask.parentTaskId));
+            if (t) oldParentKey = t.key;
+          }
+          if (updated.parentTaskId) {
+            const [t] = await tx.select({ key: tasks.taskKey }).from(tasks).where(eq(tasks.taskId, updated.parentTaskId));
+            if (t) newParentKey = t.key;
+          }
+          await logAuditAction({
+            actorId, action: updated.parentTaskId ? 'task.parent_set' : 'task.parent_removed',
+            entityType: eType, entityId: eId, workspaceId,
+            newValues: { parent_task_id: updated.parentTaskId, parent_task_key: newParentKey },
+            oldValues: { parent_task_id: oldTask.parentTaskId, parent_task_key: oldParentKey }, tx
+          });
+        }
+        if (oldTask.epicId !== updated.epicId) {
+          let oldEpicKey = null, newEpicKey = null;
+          if (oldTask.epicId) {
+            const [t] = await tx.select({ key: tasks.taskKey }).from(tasks).where(eq(tasks.taskId, oldTask.epicId));
+            if (t) oldEpicKey = t.key;
+          }
+          if (updated.epicId) {
+            const [t] = await tx.select({ key: tasks.taskKey }).from(tasks).where(eq(tasks.taskId, updated.epicId));
+            if (t) newEpicKey = t.key;
+          }
+          await logAuditAction({
+            actorId, action: updated.epicId ? 'task.epic_set' : 'task.epic_removed',
+            entityType: eType, entityId: eId, workspaceId,
+            newValues: { epic_id: updated.epicId, epic_key: newEpicKey },
+            oldValues: { epic_id: oldTask.epicId, epic_key: oldEpicKey }, tx
+          });
+        }
+      }
+
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Task not found.' });
       return;
     }
 
-    res.json({ message: 'Task updated', task: updated });
+    // --- NOTIFICATIONS ---
+    const actorId = req.user!.userId;
+    if (oldTask) {
+      // Assignee changed
+      if (oldTask.assigneeId !== result.assigneeId) {
+        if (result.assigneeId && result.assigneeId !== actorId) {
+          const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, actorId));
+          await createNotification({
+            recipientId: result.assigneeId,
+            actorId,
+            type: 'task_assigned',
+            entityType: 'task',
+            entityId: result.taskId,
+            title: `You were assigned ${result.taskKey}`,
+            body: `${actor?.name || 'Someone'} assigned you to '${result.title}'`,
+          });
+        }
+        if (oldTask.assigneeId && oldTask.assigneeId !== actorId) {
+          const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, actorId));
+          await createNotification({
+            recipientId: oldTask.assigneeId,
+            actorId,
+            type: 'task_unassigned',
+            entityType: 'task',
+            entityId: result.taskId,
+            title: `You were unassigned from ${result.taskKey}`,
+            body: `${actor?.name || 'Someone'} removed you from '${result.title}'`,
+          });
+        }
+      }
+
+      // Status changed
+      if (oldTask.status !== result.status) {
+        const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, actorId));
+        const formatStatus = (s: string) => s.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+        
+        const notifyStatus = async (recipient: string | null) => {
+          if (recipient && recipient !== actorId) {
+            await createNotification({
+              recipientId: recipient,
+              actorId,
+              type: 'task_status_changed',
+              entityType: 'task',
+              entityId: result.taskId,
+              title: `${result.taskKey} moved to ${formatStatus(result.status as string)}`,
+              body: `${actor?.name || 'Someone'} changed '${result.title}' from ${formatStatus(oldTask.status as string)} to ${formatStatus(result.status as string)}`,
+            });
+          }
+        };
+        await notifyStatus(result.assigneeId);
+        if (result.reporterId !== result.assigneeId) {
+           await notifyStatus(result.reporterId);
+        }
+      }
+
+      // Mentions in description
+      if (oldTask.descriptionText !== result.descriptionText && result.descriptionText) {
+        await notifyTaskMentions(result.descriptionText, actorId, result.taskId, result.taskKey, result.projectId as string);
+      }
+    }
+
+    res.json({ message: 'Task updated', task: result });
   } catch (err) {
     console.error('Update task error:', err);
     res.status(500).json({ error: 'Server error updating task.' });
@@ -312,18 +537,86 @@ export const reorderTask = async (req: Request, res: Response): Promise<void> =>
     const updateData: Record<string, any> = { rank: newRank, updatedAt: new Date() };
     if (status) updateData.status = status;
 
-    const [updated] = await db
-      .update(tasks)
-      .set(updateData)
-      .where(eq(tasks.taskId, taskId))
-      .returning({ taskId: tasks.taskId, rank: tasks.rank, status: tasks.status });
+    const result = await db.transaction(async (tx) => {
+      const [oldTask] = await tx.select().from(tasks).where(eq(tasks.taskId, taskId)).limit(1);
 
-    if (!updated) {
+      const [updated] = await tx
+        .update(tasks)
+        .set(updateData)
+        .where(eq(tasks.taskId, taskId))
+        .returning({ taskId: tasks.taskId, rank: tasks.rank, status: tasks.status, projectId: tasks.projectId });
+
+      if (!updated || !oldTask) return null;
+
+      const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, updated.projectId!));
+      const workspaceId = project?.workspaceId ?? undefined;
+
+      if (oldTask.rank !== updated.rank) {
+        await logAuditAction({
+          actorId: req.user!.userId,
+          action: 'task.rank_changed',
+          entityType: 'task',
+          entityId: updated.taskId,
+          workspaceId,
+          newValues: { rank: updated.rank },
+          oldValues: { rank: oldTask.rank },
+          tx
+        });
+      }
+      if (oldTask.status !== updated.status) {
+        await logAuditAction({
+          actorId: req.user!.userId,
+          action: 'task.status_changed',
+          entityType: 'task',
+          entityId: updated.taskId,
+          workspaceId,
+          newValues: { status: updated.status },
+          oldValues: { status: oldTask.status },
+          tx
+        });
+      }
+
+      return {
+        updated,
+        oldStatus: oldTask.status,
+        title: oldTask.title,
+        taskKey: oldTask.taskKey,
+        assigneeId: oldTask.assigneeId,
+        reporterId: oldTask.reporterId
+      };
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Task not found.' });
       return;
     }
 
-    res.json({ message: 'Task reordered', task: updated });
+    // --- NOTIFICATIONS ---
+    const actorId = req.user!.userId;
+    if (result.oldStatus !== result.updated.status) {
+      const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, actorId));
+      const formatStatus = (s: string) => s.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+      
+      const notifyStatus = async (recipient: string | null) => {
+        if (recipient && recipient !== actorId) {
+          await createNotification({
+            recipientId: recipient,
+            actorId,
+            type: 'task_status_changed',
+            entityType: 'task',
+            entityId: result.updated.taskId,
+            title: `${result.taskKey} moved to ${formatStatus(result.updated.status as string)}`,
+            body: `${actor?.name || 'Someone'} changed '${result.title}' from ${formatStatus(result.oldStatus as string)} to ${formatStatus(result.updated.status as string)}`,
+          });
+        }
+      };
+      await notifyStatus(result.assigneeId);
+      if (result.reporterId !== result.assigneeId) {
+         await notifyStatus(result.reporterId);
+      }
+    }
+
+    res.json({ message: 'Task reordered', task: result.updated });
   } catch (err) {
     console.error('Reorder task error:', err);
     res.status(500).json({ error: 'Server error reordering task.' });
@@ -336,13 +629,33 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
   try {
     const taskId = req.params.taskId || res.locals.taskId;
 
-    const [deleted] = await db
-      .update(tasks)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(tasks.taskId, taskId), isNull(tasks.deletedAt)))
-      .returning({ taskId: tasks.taskId });
+    const result = await db.transaction(async (tx) => {
+      const [oldTask] = await tx.select().from(tasks).where(and(eq(tasks.taskId, taskId), isNull(tasks.deletedAt))).limit(1);
+      if (!oldTask) return null;
 
-    if (!deleted) {
+      const [deleted] = await tx
+        .update(tasks)
+        .set({ deletedAt: new Date(), updatedAt: new Date() })
+        .where(eq(tasks.taskId, taskId))
+        .returning({ taskId: tasks.taskId, deletedAt: tasks.deletedAt });
+
+      const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, oldTask.projectId!));
+      
+      await logAuditAction({
+        actorId: req.user!.userId,
+        action: 'task.deleted',
+        entityType: 'task',
+        entityId: deleted.taskId,
+        workspaceId: project?.workspaceId ?? undefined,
+        newValues: { deleted_at: deleted.deletedAt?.toISOString() },
+        oldValues: { task_key: oldTask.taskKey, title: oldTask.title, status: oldTask.status },
+        tx
+      });
+
+      return deleted;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Task not found.' });
       return;
     }
@@ -440,5 +753,61 @@ export const createTaskComment = async (req: Request, res: Response): Promise<vo
   } catch (err) {
     console.error('Create task comment error:', err);
     res.status(500).json({ error: 'Server error creating comment.' });
+  }
+};
+
+// ─── HELPER: NOTIFY MENTIONS ─────────────────────────────────────────────────
+const notifyTaskMentions = async (text: string, actorId: string, taskId: string, taskKey: string, projectId: string) => {
+  let mentionedIds: string[] = [];
+
+  // HTML Mentions
+  const spanRegex = /<[^>]+>/g;
+  const tagMatches = [...text.matchAll(spanRegex)];
+  for (const match of tagMatches) {
+    const tag = match[0];
+    if (tag.includes('data-type="mention"')) {
+      const idMatch = tag.match(/data-id="([^"]+)"/);
+      if (idMatch) mentionedIds.push(idMatch[1]);
+    }
+  }
+
+  // Plain Text Mentions (fallback for simple textareas)
+  const plainRegex = /@([a-zA-Z0-9_-]+)/g;
+  const plainMatches = [...text.matchAll(plainRegex)];
+  const usernames = [...new Set(plainMatches.map(m => m[1]))];
+
+  for (const username of usernames) {
+    if (['all', 'everyone', 'channel'].includes(username.toLowerCase())) {
+      const allProjectMembers = await db.select({ userId: projectMembers.userId }).from(projectMembers).where(eq(projectMembers.projectId, projectId));
+      mentionedIds.push(...(allProjectMembers.map(m => m.userId).filter(Boolean) as string[]));
+      continue;
+    }
+    const [mentionedUser] = await db
+      .select({ id: users.userId })
+      .from(users)
+      .where(or(ilike(users.displayName, username), ilike(users.fullName, username + '%')))
+      .limit(1);
+    if (mentionedUser) mentionedIds.push(mentionedUser.id);
+  }
+
+  // Deduplicate
+  mentionedIds = [...new Set(mentionedIds)];
+
+  if (mentionedIds.length === 0) return;
+
+  const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, actorId));
+
+  for (const mentionedId of mentionedIds) {
+    if (mentionedId !== actorId) {
+      await createNotification({
+        recipientId: mentionedId,
+        actorId,
+        type: 'task_mentioned',
+        entityType: 'task',
+        entityId: taskId,
+        title: `${actor?.name || 'Someone'} mentioned you in ${taskKey}`,
+        body: `'${(text || '').replace(/<[^>]*>?/gm, '').substring(0, 100)}...'`,
+      });
+    }
   }
 };

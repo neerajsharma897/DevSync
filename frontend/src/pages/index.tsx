@@ -9,6 +9,7 @@ export { WorkspaceLayout } from './workspaces/WorkspaceLayout.js';
 export { WorkspaceHome } from './workspaces/WorkspaceHome.js';
 export { WorkspaceMembers } from './workspaces/WorkspaceMembers.js';
 export { WorkspaceSettings } from './workspaces/WorkspaceSettings.js';
+export { WorkspaceAuditLogs } from './workspaces/WorkspaceAuditLogs.js';
 
 export { ChannelPage } from './channels/ChannelPage.js';
 

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../lib/api.js';
-import { Loader2, ArrowLeft, AlignLeft, Activity, CheckCircle2, Trash2, X, Send, GitCommit } from 'lucide-react';
+import { Loader2, ArrowLeft, AlignLeft, Trash2, X, GitCommit } from 'lucide-react';
 import { format } from 'date-fns';
 import clsx from 'clsx';
 import { useAuthStore } from '../../store/auth.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
+import { MessageSquare } from 'lucide-react';
 
 const STATUSES = [
   { value: 'TODO', label: 'To Do' },
@@ -53,21 +54,18 @@ export const TaskDetailPage = () => {
 
   // New feature states
   const [allTasks, setAllTasks] = useState<any[]>([]);
-  const [comments, setComments] = useState<any[]>([]);
   const [linkedCommits, setLinkedCommits] = useState<any[]>([]);
-  const [commentText, setCommentText] = useState('');
-  const [isPostingComment, setIsPostingComment] = useState(false);
+  const { channels } = useCurrentWorkspaceStore();
 
   useEffect(() => {
     const fetchTask = async () => {
       setIsLoading(true);
       try {
-        const [taskData, membersData, sprintsData, allTasksData, commentsData] = await Promise.all([
+        const [taskData, membersData, sprintsData, allTasksData] = await Promise.all([
           apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${taskKey}`),
           apiFetch(`/workspaces/${slug}/projects/${key}/members`),
           apiFetch(`/workspaces/${slug}/projects/${key}/sprints`),
           apiFetch(`/workspaces/${slug}/projects/${key}/tasks`),
-          apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${taskKey}/comments`),
         ]);
 
         let commitsData = [];
@@ -83,7 +81,6 @@ export const TaskDetailPage = () => {
         setMembers(membersData.members || []);
         setSprints(sprintsData.sprints || []);
         setAllTasks(allTasksData.tasks || []);
-        setComments(commentsData.comments || []);
         setLinkedCommits(commitsData.filter((c: any) => c.taskId === taskData.task.taskId));
       } catch (err) {
         console.error('Failed to load task', err);
@@ -154,20 +151,13 @@ export const TaskDetailPage = () => {
     patchTask({ labels: newLabels });
   };
 
-  const handlePostComment = async () => {
-    if (!commentText.trim() || isPostingComment) return;
-    setIsPostingComment(true);
-    try {
-      const data = await apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${taskKey}/comments`, {
-        method: 'POST',
-        body: JSON.stringify({ bodyText: commentText.trim() }),
-      });
-      setComments(prev => [...prev, data.comment]);
-      setCommentText('');
-    } catch (err: any) {
-      alert(err.message || 'Failed to post comment');
-    } finally {
-      setIsPostingComment(false);
+  const handleDiscussInChannel = () => {
+    // Find a channel for this project
+    const projectChannel = channels.find(c => c.projectId === task?.projectId) || channels.find(c => !c.projectId && c.type !== 'dm' && c.type !== 'group_dm');
+    if (projectChannel) {
+      navigate(`/w/${slug}/channels/${projectChannel.channelId}?task=${taskKey}`);
+    } else {
+      alert("No channel found to discuss this task.");
     }
   };
 
@@ -281,78 +271,22 @@ export const TaskDetailPage = () => {
             )}
           </div>
 
-          {/* Activity / Comments */}
+          {/* Discussion */}
           <div>
             <div className="flex items-center space-x-2 text-gray-300 font-semibold mb-4 border-b border-gray-800 pb-2">
-              <Activity className="w-5 h-5" />
-              <h3>Activity</h3>
+              <MessageSquare className="w-5 h-5" />
+              <h3>Discussion</h3>
             </div>
-            
-            {/* Comment input */}
-            <div className="flex space-x-4 mb-6">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-600 to-gray-500 flex items-center justify-center text-white text-xs font-bold shrink-0">ME</div>
-              <div className="flex-1 flex space-x-2">
-                <input 
-                  type="text" 
-                  value={commentText}
-                  onChange={e => setCommentText(e.target.value)}
-                  placeholder="Add a comment..." 
-                  disabled={isPostingComment}
-                  className="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50 disabled:opacity-50"
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') handlePostComment();
-                  }}
-                />
-                <button 
-                  onClick={handlePostComment}
-                  disabled={!commentText.trim() || isPostingComment}
-                  className="px-3 py-2 bg-white text-gray-950 rounded-lg disabled:opacity-30 hover:bg-gray-200 transition-colors"
-                >
-                  {isPostingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                </button>
-              </div>
+            <div className="bg-gray-900/40 border border-gray-800 rounded-xl p-6 text-center">
+              <p className="text-gray-400 mb-4 text-sm">Task discussions have been moved to project channels for better team visibility.</p>
+              <button 
+                onClick={handleDiscussInChannel}
+                className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Discuss in Channel
+              </button>
             </div>
-
-            {/* Comments List */}
-            {comments.map(c => {
-              // Ignore the thread root message itself
-              if (c.systemType === 'task_thread_root') return null;
-
-              if (c.isSystem) {
-                return (
-                  <div key={c.commentId} className="flex space-x-4 items-start mb-6">
-                    <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center shrink-0 border border-gray-700">
-                      <CheckCircle2 className="w-4 h-4 text-gray-400" />
-                    </div>
-                    <div className="pt-1.5">
-                      <p className="text-sm text-gray-300">
-                        {c.bodyText}
-                      </p>
-                      <span className="text-xs text-gray-500 mt-0.5 block">
-                        {format(new Date(c.createdAt), 'MMM d, yyyy h:mm a')}
-                      </span>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={c.commentId} className="flex space-x-4 items-start mb-6">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-600 flex items-center justify-center text-white text-xs font-bold shrink-0 border border-gray-600">
-                    {c.authorName ? c.authorName.charAt(0).toUpperCase() : '?'}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-baseline space-x-2">
-                      <span className="font-semibold text-gray-200">{c.authorName || 'Unknown User'}</span>
-                      <span className="text-xs text-gray-500">{format(new Date(c.createdAt), 'MMM d, yyyy h:mm a')}</span>
-                    </div>
-                    <div className="mt-1 text-sm text-gray-300 bg-gray-900/50 border border-gray-800 rounded-lg p-3 whitespace-pre-wrap">
-                      {c.bodyText}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </div>
 

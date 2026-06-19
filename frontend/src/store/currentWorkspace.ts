@@ -12,6 +12,7 @@ interface Channel {
   name: string;
   type: string;
   projectId?: string | null;
+  isAnnouncementOnly?: boolean;
 }
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member';
@@ -24,6 +25,7 @@ interface CurrentWorkspaceState {
   description: string;
   myRole: WorkspaceRole;
   memberCount: number;
+  members: any[];
   projects: Project[];
   channels: Channel[];
   isLoading: boolean;
@@ -44,6 +46,7 @@ export const useCurrentWorkspaceStore = create<CurrentWorkspaceState>((set, get)
   description: '',
   myRole: 'member',
   memberCount: 0,
+  members: [],
   projects: [],
   channels: [],
   isLoading: true,
@@ -82,6 +85,7 @@ export const useCurrentWorkspaceStore = create<CurrentWorkspaceState>((set, get)
         description: data.workspace.description || '',
         myRole: myMembership?.role || 'member',
         memberCount: (data.members || []).length,
+        members: data.members || [],
         projects: projectsData.projects || [],
         channels: channelsData.channels || [],
         isLoading: false,

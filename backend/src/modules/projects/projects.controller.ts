@@ -4,6 +4,9 @@ import { projects, projectMembers } from '../../db/schema/projects.js';
 import { workspaceMembers } from '../../db/schema/workspaces.js';
 import { users } from '../../db/schema/auth.js';
 import { eq, and, sql } from 'drizzle-orm';
+import { getIO } from '../../sockets/index.js';
+import { logAuditAction } from '../audit/audit.controller.js';
+import { createNotification } from '../notifications/notifications.controller.js';
 
 // ─── CREATE PROJECT ──────────────────────────────────────────────────────────
 // POST /api/workspaces/:workspaceId/projects
@@ -56,6 +59,16 @@ export const createProject = async (req: Request, res: Response): Promise<void> 
         userId,
         role: 'project_admin',
         addedBy: userId,
+      });
+
+      await logAuditAction({
+        actorId: userId,
+        action: 'project.created',
+        entityType: 'project',
+        entityId: project.projectId,
+        workspaceId: workspaceId,
+        newValues: { name: project.name, key: project.key, lead_user_id: project.leadUserId, workspace_id: project.workspaceId },
+        tx
       });
 
       return project;
@@ -185,18 +198,52 @@ export const updateProject = async (req: Request, res: Response): Promise<void> 
       updateData.status = status;
     }
 
-    const [updated] = await db
-      .update(projects)
-      .set(updateData)
-      .where(eq(projects.projectId, projectId))
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [oldProject] = await tx.select().from(projects).where(eq(projects.projectId, projectId)).limit(1);
 
-    if (!updated) {
+      const [updated] = await tx
+        .update(projects)
+        .set(updateData)
+        .where(eq(projects.projectId, projectId))
+        .returning();
+
+      if (!updated || !oldProject) return null;
+
+      const actorId = req.user!.userId;
+      const workspaceId = updated.workspaceId ?? undefined;
+      const eType = 'project';
+      const eId = projectId;
+
+      if (oldProject.name !== updated.name) {
+        await logAuditAction({ actorId, action: 'project.name_changed', entityType: eType, entityId: eId, workspaceId, newValues: { name: updated.name }, oldValues: { name: oldProject.name }, tx });
+      }
+      if (oldProject.description !== updated.description) {
+        await logAuditAction({ actorId, action: 'project.description_changed', entityType: eType, entityId: eId, workspaceId, newValues: { description: updated.description }, oldValues: { description: oldProject.description }, tx });
+      }
+      if (oldProject.iconUrl !== updated.iconUrl) {
+        await logAuditAction({ actorId, action: 'project.icon_changed', entityType: eType, entityId: eId, workspaceId, newValues: { icon_url: updated.iconUrl }, oldValues: { icon_url: oldProject.iconUrl }, tx });
+      }
+      if (oldProject.leadUserId !== updated.leadUserId) {
+        await logAuditAction({ actorId, action: 'project.lead_changed', entityType: eType, entityId: eId, workspaceId, newValues: { lead_user_id: updated.leadUserId }, oldValues: { lead_user_id: oldProject.leadUserId }, tx });
+      }
+
+      if (oldProject.status !== updated.status) {
+        if (updated.status === 'archived') {
+          await logAuditAction({ actorId, action: 'project.archived', entityType: eType, entityId: eId, workspaceId, newValues: { status: 'archived' }, oldValues: { status: 'active' }, tx });
+        } else {
+          await logAuditAction({ actorId, action: 'project.unarchived', entityType: eType, entityId: eId, workspaceId, newValues: { status: 'active' }, oldValues: { status: 'archived' }, tx });
+        }
+      }
+
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Project not found.' });
       return;
     }
 
-    res.json({ message: 'Project updated', project: updated });
+    res.json({ message: 'Project updated', project: result });
   } catch (err) {
     console.error('Update project error:', err);
     res.status(500).json({ error: 'Server error updating project.' });
@@ -252,17 +299,46 @@ export const addProjectMember = async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const [member] = await db
-      .insert(projectMembers)
-      .values({
-        projectId,
-        userId: targetUserId,
-        role: memberRole,
-        addedBy,
-      })
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [member] = await tx
+        .insert(projectMembers)
+        .values({
+          projectId,
+          userId: targetUserId,
+          role: memberRole,
+          addedBy,
+        })
+        .returning();
 
-    res.status(201).json({ message: 'Member added to project', member });
+      await logAuditAction({
+        actorId: addedBy,
+        action: 'project_member.added',
+        entityType: 'project',
+        entityId: projectId,
+        workspaceId,
+        newValues: { user_id: targetUserId, role: memberRole },
+        tx
+      });
+
+      return member;
+    });
+
+    const actorId = req.user!.userId;
+    if (targetUserId !== actorId) {
+      const [actor] = await db.select({ name: users.fullName }).from(users).where(eq(users.userId, actorId));
+      const [project] = await db.select({ name: projects.name }).from(projects).where(eq(projects.projectId, projectId));
+      await createNotification({
+        recipientId: targetUserId,
+        actorId,
+        type: 'project_member_added',
+        entityType: 'project',
+        entityId: projectId,
+        title: `You were added to ${project?.name || 'Project'}`,
+        body: `${actor?.name || 'Someone'} added you to ${project?.name || 'Project'} as ${memberRole.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}`,
+      });
+    }
+
+    res.status(201).json({ message: 'Member added to project', member: result });
   } catch (err) {
     console.error('Add project member error:', err);
     res.status(500).json({ error: 'Server error adding project member.' });
@@ -275,12 +351,55 @@ export const removeProjectMember = async (req: Request, res: Response): Promise<
   try {
     const { projectId, userId } = req.params as Record<string, string>;
 
-    const [removed] = await db
-      .delete(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-      .returning({ id: projectMembers.id });
+    // If the user being removed is an admin, check if they are the last one
+    const [targetMember] = await db
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)));
 
-    if (!removed) {
+    if (!targetMember) {
+      res.status(404).json({ error: 'Member not found in this project.' });
+      return;
+    }
+
+    if (targetMember.role === 'project_admin') {
+      const [{ count }] = await db
+        .select({ count: sql<number>`cast(count(*) as integer)` })
+        .from(projectMembers)
+        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.role, 'project_admin')));
+      
+      if (count <= 1) {
+        res.status(400).json({ error: 'Cannot remove the last project admin.' });
+        return;
+      }
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [removed] = await tx
+        .delete(projectMembers)
+        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+        .returning({ id: projectMembers.id });
+
+      if (removed) {
+        // Find workspaceId
+        const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, projectId)).limit(1);
+
+        await logAuditAction({
+          actorId: req.user!.userId,
+          action: 'project_member.removed',
+          entityType: 'project',
+          entityId: projectId,
+          workspaceId: project?.workspaceId ?? undefined,
+          newValues: null,
+          oldValues: { user_id: userId, role: targetMember.role },
+          tx
+        });
+      }
+
+      return removed;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Member not found in this project.' });
       return;
     }
@@ -332,18 +451,65 @@ export const updateProjectMemberRole = async (req: Request, res: Response): Prom
       return;
     }
 
-    const [updated] = await db
-      .update(projectMembers)
-      .set({ role })
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
-      .returning();
+    // Check if trying to demote the last project admin
+    if (role !== 'project_admin') {
+      const [targetMember] = await db
+        .select({ role: projectMembers.role })
+        .from(projectMembers)
+        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)));
 
-    if (!updated) {
+      if (!targetMember) {
+        res.status(404).json({ error: 'Member not found in this project.' });
+        return;
+      }
+
+      if (targetMember.role === 'project_admin') {
+        const [{ count }] = await db
+          .select({ count: sql<number>`cast(count(*) as integer)` })
+          .from(projectMembers)
+          .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.role, 'project_admin')));
+        
+        if (count <= 1) {
+          res.status(400).json({ error: 'Cannot demote the last project admin.' });
+          return;
+        }
+      }
+    }
+
+    const result = await db.transaction(async (tx) => {
+      const [oldMember] = await tx.select({ role: projectMembers.role }).from(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId))).limit(1);
+
+      const [updated] = await tx
+        .update(projectMembers)
+        .set({ role })
+        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+        .returning();
+
+      if (updated) {
+        // Find workspaceId
+        const [project] = await tx.select({ workspaceId: projects.workspaceId }).from(projects).where(eq(projects.projectId, projectId)).limit(1);
+
+        await logAuditAction({
+          actorId: req.user!.userId,
+          action: 'project_member.role_changed',
+          entityType: 'project',
+          entityId: projectId,
+          workspaceId: project?.workspaceId ?? undefined,
+          newValues: { role: updated.role, user_id: updated.userId },
+          oldValues: { role: oldMember?.role ?? null, user_id: userId },
+          tx
+        });
+      }
+
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Member not found in this project.' });
       return;
     }
 
-    res.json({ message: 'Project member role updated', member: updated });
+    res.json({ message: 'Project member role updated', member: result });
   } catch (err) {
     console.error('Update project member role error:', err);
     res.status(500).json({ error: 'Server error updating project member role.' });
@@ -356,18 +522,34 @@ export const archiveProject = async (req: Request, res: Response): Promise<void>
   try {
     const { projectId } = req.params as Record<string, string>;
 
-    const [updated] = await db
-      .update(projects)
-      .set({ status: 'archived', updatedAt: new Date() })
-      .where(eq(projects.projectId, projectId))
-      .returning();
+    const result = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(projects)
+        .set({ status: 'archived', updatedAt: new Date() })
+        .where(eq(projects.projectId, projectId))
+        .returning();
 
-    if (!updated) {
+      if (updated) {
+        await logAuditAction({
+          actorId: req.user!.userId,
+          action: 'project.archived',
+          entityType: 'project',
+          entityId: projectId,
+          workspaceId: updated.workspaceId ?? undefined,
+          newValues: { status: 'archived' },
+          oldValues: { status: 'active' },
+          tx
+        });
+      }
+      return updated;
+    });
+
+    if (!result) {
       res.status(404).json({ error: 'Project not found.' });
       return;
     }
 
-    res.json({ message: 'Project archived', project: updated });
+    res.json({ message: 'Project archived', project: result });
   } catch (err) {
     console.error('Archive project error:', err);
     res.status(500).json({ error: 'Server error archiving project.' });
