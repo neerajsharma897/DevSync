@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { db } from '../../config/db.js';
-import { tasks } from '../../db/schema/tasks.js';
+import { tasks, taskComments } from '../../db/schema/tasks.js';
 import { projects, projectMembers } from '../../db/schema/projects.js';
 import { users } from '../../db/schema/auth.js';
 import { eq, and, isNull, asc, desc, sql, or, ilike } from 'drizzle-orm';
@@ -328,5 +328,69 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
   } catch (err) {
     console.error('Delete task error:', err);
     res.status(500).json({ error: 'Server error deleting task.', details: err instanceof Error ? err.message : String(err), stack: err instanceof Error ? err.stack : undefined });
+  }
+};
+
+// ─── GET TASK COMMENTS ───────────────────────────────────────────────────────
+// GET /api/projects/:projectId/tasks/:taskKey/comments
+export const getTaskComments = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const taskId = res.locals.taskId;
+
+    const comments = await db
+      .select({
+        commentId: taskComments.commentId,
+        taskId: taskComments.taskId,
+        bodyText: taskComments.bodyText,
+        createdAt: taskComments.createdAt,
+        authorId: users.userId,
+        authorName: users.fullName,
+      })
+      .from(taskComments)
+      .leftJoin(users, eq(users.userId, taskComments.authorId))
+      .where(eq(taskComments.taskId, taskId))
+      .orderBy(asc(taskComments.createdAt));
+
+    res.json({ comments });
+  } catch (err) {
+    console.error('Get task comments error:', err);
+    res.status(500).json({ error: 'Server error fetching comments.' });
+  }
+};
+
+// ─── CREATE TASK COMMENT ─────────────────────────────────────────────────────
+// POST /api/projects/:projectId/tasks/:taskKey/comments
+export const createTaskComment = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const taskId = res.locals.taskId;
+    const userId = req.user!.userId;
+    const { bodyText } = req.body;
+
+    if (!bodyText || bodyText.trim().length === 0) {
+      res.status(400).json({ error: 'Comment body cannot be empty.' });
+      return;
+    }
+
+    const [comment] = await db
+      .insert(taskComments)
+      .values({
+        taskId,
+        authorId: userId,
+        bodyText,
+      })
+      .returning();
+
+    // Fetch author details to return in the response
+    const [author] = await db.select({ fullName: users.fullName }).from(users).where(eq(users.userId, userId));
+
+    res.status(201).json({
+      comment: {
+        ...comment,
+        authorName: author?.fullName,
+      }
+    });
+  } catch (err) {
+    console.error('Create task comment error:', err);
+    res.status(500).json({ error: 'Server error creating comment.' });
   }
 };

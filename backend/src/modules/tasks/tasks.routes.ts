@@ -8,6 +8,8 @@ import {
   updateTask,
   reorderTask,
   deleteTask,
+  getTaskComments,
+  createTaskComment,
 } from './tasks.controller.js';
 
 import { resolveTaskKey } from '../../middleware/slugs.js';
@@ -27,5 +29,9 @@ router.get('/:taskKey', requireProjectRole(['project_admin', 'developer', 'viewe
 router.patch('/:taskKey', requireProjectRole(['project_admin', 'developer']), updateTask);
 router.patch('/:taskKey/reorder', requireProjectRole(['project_admin', 'developer']), reorderTask);
 router.delete('/:taskKey', requireProjectRole(['project_admin']), deleteTask);
+
+// ─── Task Comments ───────────────────────────────────────────────────────────
+router.get('/:taskKey/comments', requireProjectRole(['project_admin', 'developer', 'viewer']), getTaskComments);
+router.post('/:taskKey/comments', requireProjectRole(['project_admin', 'developer']), createTaskComment);
 
 export default router;

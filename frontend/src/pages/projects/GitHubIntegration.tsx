@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { GitBranch, GitCommit, GitPullRequest, CheckCircle2, XCircle, Clock, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { GitBranch, GitCommit, CheckCircle2, XCircle, Clock, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../../lib/api.js';
 import { formatDistanceToNow } from 'date-fns';
 import clsx from 'clsx';

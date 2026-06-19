@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../lib/api.js';
-import { Play, CheckCircle2, Calendar, Target, Loader2, Plus, X, Pause, Trash2, Edit3 } from 'lucide-react';
-import clsx from 'clsx';
+import { Play, CheckCircle2, Calendar, Target, Loader2, Plus, X, Trash2 } from 'lucide-react';
+
 import { format } from 'date-fns';
 
 interface Sprint {
@@ -20,6 +20,7 @@ export const SprintList = () => {
   const navigate = useNavigate();
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [canManageSprint, setCanManageSprint] = useState(false);
 
   // Create modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -39,20 +40,33 @@ export const SprintList = () => {
   const [showCloseModal, setShowCloseModal] = useState<Sprint | null>(null);
   const [isClosing, setIsClosing] = useState(false);
 
-  const fetchSprints = async () => {
+  const fetchSprintsAndMembers = async () => {
     setIsLoading(true);
     try {
-      const data = await apiFetch(`/workspaces/${slug}/projects/${key}/sprints`);
-      setSprints(data.sprints || []);
+      const [sprintsData, membersData] = await Promise.all([
+        apiFetch(`/workspaces/${slug}/projects/${key}/sprints`),
+        apiFetch(`/workspaces/${slug}/projects/${key}/members`)
+      ]);
+      setSprints(sprintsData.sprints || []);
+      
+      const { useAuthStore } = await import('../../store/auth.js');
+      const { useCurrentWorkspaceStore } = await import('../../store/currentWorkspace.js');
+      const currentUser = useAuthStore.getState().user;
+      const isAdmin = useCurrentWorkspaceStore.getState().isAdmin();
+      
+      const myMembership = (membersData.members || []).find((m: any) => m.userId === currentUser?.userId);
+      const isProjectAdmin = myMembership?.role === 'project_admin';
+      
+      setCanManageSprint(isAdmin || isProjectAdmin);
     } catch (err) {
-      console.error('Failed to load sprints', err);
+      console.error('Failed to load sprints or members', err);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    if (slug && key) fetchSprints();
+    if (slug && key) fetchSprintsAndMembers();
   }, [slug, key]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -72,7 +86,7 @@ export const SprintList = () => {
       setShowCreateModal(false);
       setNewName('');
       setNewGoal('');
-      fetchSprints();
+      fetchSprintsAndMembers();
     } catch (err: any) {
       alert(err.message || 'Failed to create sprint.');
     } finally {
@@ -92,7 +106,7 @@ export const SprintList = () => {
         }),
       });
       setShowStartModal(null);
-      fetchSprints();
+      fetchSprintsAndMembers();
     } catch (err: any) {
       alert(err.message || 'Failed to start sprint.');
     } finally {
@@ -108,7 +122,7 @@ export const SprintList = () => {
         method: 'PATCH',
       });
       setShowCloseModal(null);
-      fetchSprints();
+      fetchSprintsAndMembers();
     } catch (err: any) {
       alert(err.message || 'Failed to close sprint.');
     } finally {
@@ -120,7 +134,7 @@ export const SprintList = () => {
     if (!confirm('Delete this sprint? This action cannot be undone.')) return;
     try {
       await apiFetch(`/workspaces/${slug}/projects/${key}/sprints/${sprintId}`, { method: 'DELETE' });
-      fetchSprints();
+      fetchSprintsAndMembers();
     } catch (err: any) {
       alert(err.message || 'Failed to delete sprint.');
     }
@@ -145,16 +159,18 @@ export const SprintList = () => {
           <h2 className="text-2xl font-bold text-gray-100">Sprints</h2>
           <p className="text-gray-400 text-sm">Manage iterations and view historical velocity.</p>
         </div>
-        <button 
-          onClick={() => {
-            setNewName(`Sprint ${sprints.length + 1}`);
-            setShowCreateModal(true);
-          }}
-          className="flex items-center px-4 py-2 bg-white hover:bg-gray-200 text-gray-950 text-sm font-semibold rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Sprint
-        </button>
+        {canManageSprint && (
+          <button 
+            onClick={() => {
+              setNewName(`Sprint ${sprints.length + 1}`);
+              setShowCreateModal(true);
+            }}
+            className="flex items-center px-4 py-2 bg-white hover:bg-gray-200 text-gray-950 text-sm font-semibold rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Sprint
+          </button>
+        )}
       </div>
 
       {/* Active Sprint */}
@@ -176,12 +192,14 @@ export const SprintList = () => {
               >
                 View Board
               </button>
-              <button 
-                onClick={() => setShowCloseModal(activeSprint)}
-                className="text-sm font-semibold bg-gray-800 text-gray-300 px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
-              >
-                Close Sprint
-              </button>
+              {canManageSprint && (
+                <button 
+                  onClick={() => setShowCloseModal(activeSprint)}
+                  className="text-sm font-semibold bg-gray-800 text-gray-300 px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors border border-gray-700"
+                >
+                  Close Sprint
+                </button>
+              )}
             </div>
           </div>
 
@@ -221,23 +239,27 @@ export const SprintList = () => {
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <button 
-                    onClick={() => {
-                      setStartDate(new Date().toISOString().substring(0, 10));
-                      setStartEndDate('');
-                      setShowStartModal(sprint);
-                    }}
-                    className="flex items-center text-sm font-medium text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded transition-colors"
-                  >
-                    <Play className="w-4 h-4 mr-2 text-emerald-400" />
-                    Start
-                  </button>
-                  <button 
-                    onClick={() => handleDelete(sprint.sprintId)}
-                    className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {canManageSprint && (
+                    <>
+                      <button 
+                        onClick={() => {
+                          setStartDate(new Date().toISOString().substring(0, 10));
+                          setStartEndDate('');
+                          setShowStartModal(sprint);
+                        }}
+                        className="flex items-center text-sm font-medium text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded transition-colors"
+                      >
+                        <Play className="w-4 h-4 mr-2 text-emerald-400" />
+                        Start
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(sprint.sprintId)}
+                        className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -266,9 +288,17 @@ export const SprintList = () => {
                     <span className="font-mono bg-gray-950 px-1.5 py-0.5 rounded border border-gray-800">{sprint.taskCount} tasks</span>
                   </div>
                 </div>
-                <div className="flex items-center text-sm font-medium text-gray-500">
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Completed
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center text-sm font-medium text-gray-500">
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    Completed
+                  </div>
+                  <button 
+                    onClick={() => navigate(`/w/${slug}/projects/${key}/sprints/${sprint.sprintId}`)}
+                    className="text-xs font-semibold bg-gray-800 text-gray-300 px-3 py-1.5 rounded hover:bg-gray-700 transition-colors border border-gray-700"
+                  >
+                    View Details
+                  </button>
                 </div>
               </div>
             ))}

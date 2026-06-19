@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { apiFetch } from '../../lib/api.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { useAuthStore } from '../../store/auth.js';
-import { Shield, User, UserPlus, MoreHorizontal, Mail, Loader2, X, Search, ChevronDown } from 'lucide-react';
+import { Shield, User, UserPlus, MoreHorizontal, Mail, Loader2, X, Search } from 'lucide-react';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 

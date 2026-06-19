@@ -9,11 +9,14 @@ import {
   CheckSquare,
   Sparkles,
   Paperclip,
-  Smile
+  Smile,
+  Layers
 } from 'lucide-react';
 import { Task } from '../../types';
 import { users } from '../../data/users';
 import { useTaskStore } from '../../store/useTaskStore';
+import { useSprintStore } from '../../store/useSprintStore';
+import { useEffect } from 'react';
 
 interface TaskDetailPanelProps {
   task: Task;
@@ -22,6 +25,14 @@ interface TaskDetailPanelProps {
 
 const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({ task, onClose }) => {
   const assignee = users.find(u => u.id === task.assigneeId);
+  
+  const { sprints, fetchSprints } = useSprintStore();
+  
+  useEffect(() => {
+    fetchSprints();
+  }, [fetchSprints]);
+  
+  const currentSprint = sprints.find(s => s.id === task.sprintId);
 
   return (
     <div className="fixed inset-0 z-[100] flex justify-end">
@@ -111,6 +122,30 @@ const TaskDetailPanel: React.FC<TaskDetailPanelProps> = ({ task, onClose }) => {
                     <Calendar size={16} className="text-text-muted" />
                     <span className="text-xs font-bold text-text-muted uppercase tracking-widest w-24">Due Date</span>
                     <span className="text-sm font-medium hover:text-accent-purple cursor-pointer transition-colors">Apr 24, 2026</span>
+                 </div>
+                 <div className="flex items-center gap-3">
+                    <Layers size={16} className="text-text-muted" />
+                    <span className="text-xs font-bold text-text-muted uppercase tracking-widest w-24">Sprint</span>
+                    <div className="relative flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-bg-hover cursor-pointer transition-all">
+                       {currentSprint ? (
+                          <span className="text-sm font-medium">{currentSprint.name}</span>
+                       ) : (
+                          <span className="text-sm font-medium text-text-muted italic">Backlog</span>
+                       )}
+                       <select 
+                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                         value={task.sprintId || 'backlog'}
+                         onChange={(e) => {
+                           const val = e.target.value;
+                           useTaskStore.getState().updateTaskSprint(task.id, val === 'backlog' ? null : val);
+                         }}
+                       >
+                         <option value="backlog">Backlog</option>
+                         {sprints.map(s => (
+                           <option key={s.id} value={s.id}>{s.name}</option>
+                         ))}
+                       </select>
+                    </div>
                  </div>
               </div>
               <div className="space-y-4">

@@ -1,27 +1,43 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { BoardPage } from './BoardPage.js';
-import { Target, Calendar, Clock, CheckSquare } from 'lucide-react';
+import { Target, Calendar } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
+import { useAuthStore } from '../../store/auth.js';
+import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
+import { useBoardStore } from '../../store/boardStore.js';
+
 export const ActiveSprintBoard = () => {
-  const { slug, key } = useParams();
-  const navigate = useNavigate();
+  const { slug, key, sprintId } = useParams();
   const [activeSprint, setActiveSprint] = useState<any>(null);
+
+  const currentUser = useAuthStore(state => state.user);
+  const { isAdmin } = useCurrentWorkspaceStore();
+  const { members } = useBoardStore();
+
+  const myMembership = members.find(m => m.userId === currentUser?.userId);
+  const isProjectAdmin = myMembership?.role === 'project_admin';
+  const canManageSprint = isAdmin() || isProjectAdmin;
 
   useEffect(() => {
     const fetchSprints = async () => {
       try {
         const { apiFetch } = await import('../../lib/api.js');
         const data = await apiFetch(`/workspaces/${slug}/projects/${key}/sprints`);
-        const sprint = data.sprints?.find((s: any) => s.status === 'active');
+        let sprint;
+        if (sprintId) {
+          sprint = data.sprints?.find((s: any) => s.sprintId === sprintId);
+        } else {
+          sprint = data.sprints?.find((s: any) => s.status === 'active');
+        }
         setActiveSprint(sprint);
       } catch (err) {
         console.error('Failed to fetch sprints', err);
       }
     };
     if (slug && key) fetchSprints();
-  }, [slug, key]);
+  }, [slug, key, sprintId]);
 
   return (
     <div className="flex h-full flex-col font-sans">
@@ -32,7 +48,9 @@ export const ActiveSprintBoard = () => {
         <div>
           <div className="flex items-center space-x-3 mb-1">
             <h2 className="text-xl font-bold text-white">{activeSprint.name}</h2>
-            <span className="bg-white/10 border border-white/20 text-gray-300 text-[10px] font-bold uppercase px-2 py-0.5 rounded">Active</span>
+            <span className="bg-white/10 border border-white/20 text-gray-300 text-[10px] font-bold uppercase px-2 py-0.5 rounded">
+              {activeSprint.status === 'closed' ? 'Closed' : activeSprint.status === 'future' ? 'Planned' : 'Active'}
+            </span>
           </div>
           <div className="flex items-center text-sm text-gray-400 space-x-4">
             {activeSprint.goal && (
@@ -44,12 +62,13 @@ export const ActiveSprintBoard = () => {
             {activeSprint.endDate && (
             <span className="flex items-center">
               <Calendar className="w-4 h-4 mr-1.5" />
-              Ends {formatDistanceToNow(new Date(activeSprint.endDate), { addSuffix: true })}
+              {activeSprint.status === 'closed' ? 'Ended' : 'Ends'} {formatDistanceToNow(new Date(activeSprint.endDate), { addSuffix: true })}
             </span>
             )}
           </div>
         </div>
 
+        {activeSprint.status !== 'closed' && (
         <div className="mt-4 sm:mt-0 flex items-center space-x-6">
           <div className="flex flex-col items-end">
             <div className="text-xs font-semibold text-gray-500 mb-1 uppercase tracking-wider">Sprint Progress</div>
@@ -60,16 +79,19 @@ export const ActiveSprintBoard = () => {
               <span className="text-sm font-mono text-gray-300">65%</span>
             </div>
           </div>
-          <button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors border border-gray-700">
-            Complete Sprint
-          </button>
+          {canManageSprint && (
+            <button className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium rounded-lg transition-colors border border-gray-700">
+              Complete Sprint
+            </button>
+          )}
         </div>
+        )}
       </div>
       )}
 
       {/* The actual Kanban Board component reused inside this container */}
       <div className="flex-1 overflow-x-auto relative bg-gray-950">
-        <BoardPage />
+        <BoardPage sprintId={activeSprint?.sprintId} />
       </div>
     </div>
   );

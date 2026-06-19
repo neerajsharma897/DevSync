@@ -1,7 +1,7 @@
-import React from 'react';
+
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
-import { FolderKanban, Plus, ChevronRight, Activity } from 'lucide-react';
+import { FolderKanban, Plus, ChevronRight } from 'lucide-react';
 
 export const ProjectList = () => {
   const { slug } = useParams();

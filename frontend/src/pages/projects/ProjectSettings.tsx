@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Save, AlertTriangle, GitBranch } from 'lucide-react';
 import { apiFetch } from '../../lib/api.js';
-import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 
 export const ProjectSettings = () => {
   const { slug, key } = useParams();
@@ -19,6 +18,21 @@ export const ProjectSettings = () => {
         const data = await apiFetch(`/workspaces/${slug}/projects/${key}`);
         setName(data.project.name || '');
         setDescription(data.project.description || '');
+
+        // RBAC Guard: Verify project_admin or workspace admin
+        const { useCurrentWorkspaceStore } = await import('../../store/currentWorkspace.js');
+        const { useAuthStore } = await import('../../store/auth.js');
+        const isAdmin = useCurrentWorkspaceStore.getState().isAdmin();
+        const currentUser = useAuthStore.getState().user;
+
+        const membersData = await apiFetch(`/workspaces/${slug}/projects/${key}/members`);
+        const members = membersData.members || [];
+        const myMembership = members.find((m: any) => m.userId === currentUser?.userId);
+        
+        if (!isAdmin && myMembership?.role !== 'project_admin') {
+          navigate(`/w/${slug}/projects/${key}`, { replace: true });
+        }
+
       } catch (err) {
         console.error(err);
       } finally {
@@ -26,7 +40,7 @@ export const ProjectSettings = () => {
       }
     };
     if (slug && key) loadProject();
-  }, [slug, key]);
+  }, [slug, key, navigate]);
 
   const handleSave = async () => {
     setIsSaving(true);

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { db } from '../../config/db.js';
 import { channels, channelMembers } from '../../db/schema/channels.js';
 import { workspaceMembers } from '../../db/schema/workspaces.js';
+import { projectMembers } from '../../db/schema/projects.js';
 import { users } from '../../db/schema/auth.js';
 import { eq, and } from 'drizzle-orm';
 
@@ -67,13 +68,41 @@ export const createChannel = async (req: Request, res: Response): Promise<void> 
 export const listChannels = async (req: Request, res: Response): Promise<void> => {
   try {
     const { workspaceId } = req.params as Record<string, string>;
+    const userId = req.user!.userId;
+    const workspaceRole = req.workspaceRole; // from middleware
 
-    const results = await db
+    const allChannels = await db
       .select()
       .from(channels)
       .where(and(eq(channels.workspaceId, workspaceId), eq(channels.isArchived, false)));
 
-    res.json({ channels: results });
+    // Fetch user's project memberships
+    const userProjects = await db
+      .select({ projectId: projectMembers.projectId })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, userId));
+    const userProjectIds = new Set(userProjects.map(p => p.projectId));
+
+    // Fetch user's private channel memberships
+    const userChannels = await db
+      .select({ channelId: channelMembers.channelId })
+      .from(channelMembers)
+      .where(eq(channelMembers.userId, userId));
+    const userChannelIds = new Set(userChannels.map(c => c.channelId));
+
+    const visibleChannels = allChannels.filter(c => {
+      if (c.projectId) {
+        // Project-scoped channel
+        if (workspaceRole === 'owner' || workspaceRole === 'admin') return true;
+        return userProjectIds.has(c.projectId);
+      } else {
+        // Workspace-scoped channel
+        if (c.type === 'public') return true;
+        return userChannelIds.has(c.channelId);
+      }
+    });
+
+    res.json({ channels: visibleChannels });
   } catch (err) {
     console.error('List channels error:', err);
     res.status(500).json({ error: 'Server error listing channels.' });

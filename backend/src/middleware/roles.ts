@@ -134,6 +134,12 @@ export const requireProjectRole = (allowedRoles: ('project_admin' | 'developer' 
         return;
       }
 
+      // If user is workspace owner/admin, implicitly grant project_admin access
+      if (req.workspaceRole === 'owner' || req.workspaceRole === 'admin') {
+        req.projectRole = 'project_admin';
+        return next();
+      }
+
       // Check project membership and role
       const [membership] = await db
         .select({

@@ -1,5 +1,5 @@
-import React, { useCallback } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import React, { useCallback, useRef, useEffect } from 'react';
+import { useEditor, EditorContent, Extension } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Bold, Italic, Strikethrough, Code, List, SendHorizontal } from 'lucide-react';
 import clsx from 'clsx';
@@ -11,8 +11,36 @@ interface TiptapEditorProps {
 }
 
 export const TiptapEditor = ({ onSubmit, placeholder = 'Type a message...', isSending = false }: TiptapEditorProps) => {
+  const submitRef = useRef(onSubmit);
+  const isSendingRef = useRef(isSending);
+
+  useEffect(() => {
+    submitRef.current = onSubmit;
+    isSendingRef.current = isSending;
+  }, [onSubmit, isSending]);
+
   const editor = useEditor({
-    extensions: [StarterKit],
+    extensions: [
+      StarterKit,
+      Extension.create({
+        name: 'enterSubmit',
+        priority: 1000, // Important: ensure this runs before StarterKit
+        addKeyboardShortcuts() {
+          return {
+            'Enter': () => {
+              if (isSendingRef.current) return true;
+              const text = this.editor.getText().trim();
+              if (text !== '') {
+                const html = this.editor.getHTML();
+                submitRef.current(html);
+                this.editor.commands.clearContent();
+              }
+              return true; // Prevent default new line
+            },
+          };
+        },
+      }),
+    ],
     content: '',
     editorProps: {
       attributes: {
@@ -24,7 +52,6 @@ export const TiptapEditor = ({ onSubmit, placeholder = 'Type a message...', isSe
   const handleSubmit = useCallback(() => {
     if (!editor || isSending) return;
     const html = editor.getHTML();
-    // Only submit if it's not totally empty (excluding basic empty tags)
     if (editor.getText().trim() !== '') {
       onSubmit(html);
       editor.commands.clearContent();

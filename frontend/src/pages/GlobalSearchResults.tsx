@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Hash, FileEdit, AlignLeft } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, Hash, FileEdit } from 'lucide-react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../lib/api.js';
 import clsx from 'clsx';

@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBoardStore } from '../../store/boardStore.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
-import { Search, Filter, Loader2, MoreHorizontal, CheckSquare, Zap, BookOpen, Bug, Layers, ArrowUpDown, Calendar, Plus } from 'lucide-react';
+import { useAuthStore } from '../../store/auth.js';
+import { apiFetch } from '../../lib/api.js';
+import { Search, Loader2, MoreHorizontal, CheckSquare, Zap, BookOpen, Bug, Layers, ArrowUpDown, Calendar, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 
@@ -16,26 +18,53 @@ const ISSUE_TYPES = [
 
 const IssueTypeIcon = ({ type }: { type: string }) => {
   const found = ISSUE_TYPES.find(t => t.value === type);
-  if (!found) return <CheckSquare className="w-4 h-4 text-gray-500" />;
+  if (!found) {
+    return (
+      <span title={type} className="flex items-center justify-center">
+        <CheckSquare className="w-4 h-4 text-gray-500" />
+      </span>
+    );
+  }
   const Icon = found.icon;
-  return <Icon className={clsx("w-4 h-4", found.color)} title={type} />;
+  return (
+    <span title={type} className="flex items-center justify-center">
+      <Icon className={clsx("w-4 h-4", found.color)} />
+    </span>
+  );
 };
 
 export const BacklogPage = () => {
   const { slug, key } = useParams();
   const navigate = useNavigate();
-  const { tasks, isLoading, fetchTasks } = useBoardStore();
+  const { tasks, members, isLoading, fetchTasks, fetchMembers } = useBoardStore();
+  const { isAdmin } = useCurrentWorkspaceStore();
+  const currentUser = useAuthStore(state => state.user);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [showOnlyBacklog, setShowOnlyBacklog] = useState(false);
+  const [showOnlyBacklog, setShowOnlyBacklog] = useState(true);
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc'|'desc' }>({ key: 'taskKey', direction: 'desc' });
 
+  const [sprints, setSprints] = useState<any[]>([]);
+  const [bulkAction, setBulkAction] = useState('');
+  const [bulkValue, setBulkValue] = useState('');
+  const [isApplyingBulk, setIsApplyingBulk] = useState(false);
+
+  const myMembership = members.find(m => m.userId === currentUser?.userId);
+  const canEditTask = isAdmin() || (myMembership && myMembership.role !== 'viewer');
+
   useEffect(() => {
-    if (slug && key) fetchTasks(slug, key);
-  }, [slug, key, fetchTasks]);
+    if (slug && key) {
+      fetchTasks(slug, key);
+      fetchMembers(slug, key);
+      apiFetch(`/workspaces/${slug}/projects/${key}/sprints`)
+        .then(data => setSprints(data.sprints || []))
+        .catch(err => console.error('Failed to load sprints', err));
+    }
+  }, [slug, key, fetchTasks, fetchMembers]);
 
   const toggleSelectAll = () => {
+    if (!canEditTask) return;
     if (selectedTasks.size === filteredTasks.length) {
       setSelectedTasks(new Set());
     } else {
@@ -43,8 +72,9 @@ export const BacklogPage = () => {
     }
   };
 
-  const toggleSelect = (e: React.MouseEvent, taskId: string) => {
+  const toggleSelect = (e: React.ChangeEvent<HTMLInputElement>, taskId: string) => {
     e.stopPropagation();
+    if (!canEditTask) return;
     const newSet = new Set(selectedTasks);
     if (newSet.has(taskId)) newSet.delete(taskId);
     else newSet.add(taskId);
@@ -59,6 +89,37 @@ export const BacklogPage = () => {
     setSortConfig({ key, direction });
   };
 
+  const handleBulkApply = async () => {
+    if (!bulkAction || !bulkValue || selectedTasks.size === 0 || !slug || !key) return;
+    setIsApplyingBulk(true);
+    try {
+      const promises = Array.from(selectedTasks).map(taskId => {
+        const task = filteredTasks.find(t => t.taskId === taskId);
+        if (!task) return Promise.resolve();
+        
+        let body: any = {};
+        if (bulkAction === 'sprint') body.sprintId = bulkValue === 'backlog' ? null : bulkValue;
+        else if (bulkAction === 'status') body.status = bulkValue;
+        else if (bulkAction === 'priority') body.priority = bulkValue;
+
+        return apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${task.taskKey}`, {
+          method: 'PATCH',
+          body: JSON.stringify(body)
+        });
+      });
+
+      await Promise.all(promises);
+      setSelectedTasks(new Set());
+      setBulkAction('');
+      setBulkValue('');
+      fetchTasks(slug, key);
+    } catch (err) {
+      alert('Failed to apply bulk action');
+    } finally {
+      setIsApplyingBulk(false);
+    }
+  };
+
   // Filter & Sort
   let filteredTasks = tasks;
   if (searchQuery) {
@@ -66,7 +127,7 @@ export const BacklogPage = () => {
     filteredTasks = filteredTasks.filter(t => t.title.toLowerCase().includes(q) || t.taskKey.toLowerCase().includes(q));
   }
   if (showOnlyBacklog) {
-    filteredTasks = filteredTasks.filter(t => t.status === 'TODO'); // Assumption: TODO acts as backlog
+    filteredTasks = filteredTasks.filter(t => !t.sprintId); // Backlog means it is not assigned to any sprint
   }
 
   filteredTasks.sort((a: any, b: any) => {
@@ -114,20 +175,59 @@ export const BacklogPage = () => {
           {selectedTasks.size > 0 && (
             <div className="flex items-center bg-gray-800 rounded-lg border border-gray-700 px-3 py-1.5 animate-in fade-in slide-in-from-right-4">
               <span className="text-sm font-semibold text-white mr-3">{selectedTasks.size} selected</span>
-              <select className="bg-gray-900 text-sm text-gray-300 border border-gray-700 rounded px-2 py-1 focus:outline-none mr-2">
-                <option>Change Status...</option>
-                <option>Change Priority...</option>
-                <option>Assign Sprint...</option>
-                <option>Assign User...</option>
+              <select 
+                value={bulkAction} 
+                onChange={e => { setBulkAction(e.target.value); setBulkValue(''); }} 
+                className="bg-gray-900 text-sm text-gray-300 border border-gray-700 rounded px-2 py-1 focus:outline-none mr-2"
+              >
+                <option value="">Select Action...</option>
+                <option value="status">Change Status</option>
+                <option value="priority">Change Priority</option>
+                <option value="sprint">Assign Sprint</option>
               </select>
-              <button className="text-xs bg-white text-gray-900 font-bold px-2 py-1 rounded">Apply</button>
+              
+              {bulkAction === 'sprint' && (
+                <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="bg-gray-900 text-sm text-gray-300 border border-gray-700 rounded px-2 py-1 focus:outline-none mr-2">
+                  <option value="">Select Sprint...</option>
+                  <option value="backlog">Backlog (Remove Sprint)</option>
+                  {sprints.map((s: any) => <option key={s.sprintId} value={s.sprintId}>{s.name}</option>)}
+                </select>
+              )}
+              {bulkAction === 'status' && (
+                <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="bg-gray-900 text-sm text-gray-300 border border-gray-700 rounded px-2 py-1 focus:outline-none mr-2">
+                  <option value="">Select Status...</option>
+                  <option value="TODO">To Do</option>
+                  <option value="IN_PROGRESS">In Progress</option>
+                  <option value="IN_REVIEW">In Review</option>
+                  <option value="DONE">Done</option>
+                </select>
+              )}
+              {bulkAction === 'priority' && (
+                <select value={bulkValue} onChange={e => setBulkValue(e.target.value)} className="bg-gray-900 text-sm text-gray-300 border border-gray-700 rounded px-2 py-1 focus:outline-none mr-2">
+                  <option value="">Select Priority...</option>
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              )}
+
+              <button 
+                onClick={handleBulkApply} 
+                disabled={isApplyingBulk || !bulkAction || !bulkValue} 
+                className="text-xs bg-white text-gray-900 font-bold px-3 py-1 rounded disabled:opacity-50"
+              >
+                {isApplyingBulk ? <Loader2 className="w-3 h-3 animate-spin text-gray-900" /> : 'Apply'}
+              </button>
             </div>
           )}
 
-          <button className="flex items-center px-3 py-2 bg-white hover:bg-gray-200 text-gray-950 text-sm font-semibold rounded-lg transition-colors">
-            <Plus className="w-4 h-4 mr-1.5" />
-            Create Task
-          </button>
+          {canEditTask && (
+            <button className="flex items-center px-3 py-2 bg-white hover:bg-gray-200 text-gray-950 text-sm font-semibold rounded-lg transition-colors">
+              <Plus className="w-4 h-4 mr-1.5" />
+              Create Task
+            </button>
+          )}
         </div>
       </div>
 
@@ -136,12 +236,14 @@ export const BacklogPage = () => {
         {/* Table Header */}
         <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-gray-800 bg-gray-900/80 text-xs font-semibold text-gray-500 uppercase tracking-wider shrink-0 items-center">
           <div className="col-span-2 flex items-center space-x-3">
-            <input 
-              type="checkbox" 
-              checked={selectedTasks.size > 0 && selectedTasks.size === filteredTasks.length}
-              onChange={toggleSelectAll}
-              className="w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-0 cursor-pointer" 
-            />
+            {canEditTask && (
+              <input 
+                type="checkbox" 
+                checked={selectedTasks.size > 0 && selectedTasks.size === filteredTasks.length}
+                onChange={toggleSelectAll}
+                className="w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-0 cursor-pointer" 
+              />
+            )}
             <button onClick={() => handleSort('taskKey')} className="flex items-center hover:text-gray-300">
               Key <ArrowUpDown className="w-3 h-3 ml-1" />
             </button>
@@ -184,13 +286,15 @@ export const BacklogPage = () => {
               >
                 {/* Checkbox & Key */}
                 <div className="col-span-2 flex items-center space-x-3">
-                  <input 
-                    type="checkbox" 
-                    checked={selectedTasks.has(task.taskId)}
-                    onChange={(e) => toggleSelect(e, task.taskId)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-0 cursor-pointer" 
-                  />
+                  {canEditTask && (
+                    <input 
+                      type="checkbox" 
+                      checked={selectedTasks.has(task.taskId)}
+                      onChange={(e) => toggleSelect(e, task.taskId)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 rounded border-gray-700 bg-gray-800 focus:ring-0 cursor-pointer" 
+                    />
+                  )}
                   <div className="flex items-center space-x-2">
                     <IssueTypeIcon type={(task as any).type || 'task'} />
                     <span className="text-sm font-mono text-gray-500 group-hover:text-gray-300 transition-colors">

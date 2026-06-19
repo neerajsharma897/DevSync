@@ -123,7 +123,7 @@ export const closeSprint = async (req: Request, res: Response): Promise<void> =>
       .from(tasks)
       .where(eq(tasks.sprintId, sprintId));
 
-    const completedCount = sprintTaskList.filter(t => t.status === 'done').length;
+    const completedCount = sprintTaskList.filter(t => t.status?.toUpperCase() === 'DONE').length;
 
     await db.transaction(async (tx) => {
       // 1. Close the sprint
@@ -143,13 +143,13 @@ export const closeSprint = async (req: Request, res: Response): Promise<void> =>
         await tx.insert(sprintTasks).values({
           sprintId,
           taskId: task.taskId,
-          wasCompletedInSprint: task.status === 'done',
+          wasCompletedInSprint: task.status?.toUpperCase() === 'DONE',
         }).onConflictDoNothing();
       }
 
       // 3. Move incomplete tasks back to backlog (clear sprintId)
       const incompleteTasks = sprintTaskList
-        .filter(t => t.status !== 'done')
+        .filter(t => t.status?.toUpperCase() !== 'DONE')
         .map(t => t.taskId);
 
       if (incompleteTasks.length > 0) {

@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthGuard, GuestGuard } from './components/auth/AuthGuard.js';
 import {
@@ -77,6 +77,7 @@ function App() {
             
             <Route path="sprints" element={<SprintList />} /> {/* 4. Sprint List */}
             <Route path="sprints/active" element={<ActiveSprintBoard />} /> {/* 5. Active Sprint Board */}
+            <Route path="sprints/:sprintId" element={<ActiveSprintBoard />} /> {/* Specific Sprint Board */}
             
             <Route path="channels" element={<ProjectChannels />} /> {/* 6. Project Channels */}
             <Route path="members" element={<ProjectMembers />} /> {/* 7. Project Members */}

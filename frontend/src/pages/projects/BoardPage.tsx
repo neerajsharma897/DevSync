@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useBoardStore, Task, TaskStatus } from '../../store/boardStore.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
-import { Loader2, AlertCircle, MessageSquare, MoreHorizontal, Plus, X, Bug, BookOpen, Zap, CheckSquare, Layers, Trash2 } from 'lucide-react';
+import { Loader2, AlertCircle, Plus, X, Bug, BookOpen, Zap, CheckSquare, Layers, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
+import { useAuthStore } from '../../store/auth.js';
 import {
   DndContext,
   closestCorners,
@@ -16,7 +17,7 @@ import {
   DragOverEvent,
   DragEndEvent,
 } from '@dnd-kit/core';
-import { SortableContext, arrayMove, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
 const COLUMNS: { id: TaskStatus; title: string; color: string }[] = [
@@ -48,11 +49,14 @@ const IssueTypeIcon = ({ type, className = '' }: { type: string; className?: str
   return <Icon className={clsx("w-4 h-4", found.color, className)} />;
 };
 
-export const BoardPage = () => {
+export const BoardPage = ({ sprintId }: { sprintId?: string }) => {
   const { slug, key } = useParams();
-  const navigate = useNavigate();
   const { tasks, members, isLoading, fetchTasks, fetchMembers, updateTaskOptimistic, moveTask } = useBoardStore();
   const { isAdmin } = useCurrentWorkspaceStore();
+  const currentUser = useAuthStore(state => state.user);
+
+  const myMembership = members.find(m => m.userId === currentUser?.userId);
+  const canEditTask = isAdmin() || (myMembership && myMembership.role !== 'viewer');
 
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -62,7 +66,10 @@ export const BoardPage = () => {
   const [newTaskPriority, setNewTaskPriority] = useState('medium');
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskLabels, setNewTaskLabels] = useState('');
+  const [newTaskSprintId, setNewTaskSprintId] = useState<string>(sprintId || '');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+
+  const [sprints, setSprints] = useState<any[]>([]);
 
   // Filters
   const [filterPriority, setFilterPriority] = useState('all');
@@ -73,8 +80,17 @@ export const BoardPage = () => {
     if (slug && key) {
       fetchTasks(slug, key);
       fetchMembers(slug, key);
+      import('../../lib/api.js').then(({ apiFetch }) => {
+        apiFetch(`/workspaces/${slug}/projects/${key}/sprints`)
+          .then(data => setSprints(data.sprints || []))
+          .catch(err => console.error('Failed to load sprints', err));
+      });
     }
   }, [slug, key, fetchTasks, fetchMembers]);
+  
+  useEffect(() => {
+    setNewTaskSprintId(sprintId || '');
+  }, [sprintId]);
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,6 +107,7 @@ export const BoardPage = () => {
           priority: newTaskPriority,
           description: newTaskDescription || undefined,
           labels: newTaskLabels ? newTaskLabels.split(',').map(l => l.trim()).filter(Boolean) : [],
+          sprintId: newTaskSprintId || undefined,
         }),
       });
       await useBoardStore.getState().fetchTasks(slug, key);
@@ -100,6 +117,7 @@ export const BoardPage = () => {
       setNewTaskLabels('');
       setNewTaskType('task');
       setNewTaskPriority('medium');
+      setNewTaskSprintId(sprintId || '');
     } catch (err: any) {
       alert(err.message || 'Failed to create task.');
     } finally {
@@ -114,6 +132,9 @@ export const BoardPage = () => {
 
   // Apply filters
   let filteredTasks = tasks;
+  if (sprintId) {
+    filteredTasks = filteredTasks.filter(t => t.sprintId === sprintId);
+  }
   if (filterPriority !== 'all') {
     filteredTasks = filteredTasks.filter(t => t.priority === filterPriority);
   }
@@ -130,16 +151,18 @@ export const BoardPage = () => {
   }
 
   const handleDragStart = (event: DragStartEvent) => {
+    if (!canEditTask) return;
     const { active } = event;
-    const task = tasks.find(t => t.taskId === active.id);
+    const task = filteredTasks.find((t) => t.taskId === active.id);
     if (task) setActiveTask(task);
   };
 
-  const handleDragOver = (event: DragOverEvent) => {
+  const handleDragOver = (_event: DragOverEvent) => {
     // Handled in DragEnd for simplicity
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
+    if (!canEditTask) return;
     setActiveTask(null);
     const { active, over } = event;
     if (!over || !slug || !key) return;
@@ -209,14 +232,17 @@ export const BoardPage = () => {
         )}
 
         <div className="flex-1" />
-        {/* developer+ can create tasks */}
-        <button 
-          onClick={() => { setNewTaskStatus('TODO'); setShowTaskModal(true); }}
-          className="flex items-center px-3 py-1.5 bg-white hover:bg-gray-200 text-gray-950 text-sm font-semibold rounded-lg transition-colors"
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          Create Task
-        </button>
+        <div className="flex items-center space-x-3">
+          {canEditTask && (
+            <button 
+              onClick={() => { setNewTaskStatus('TODO'); setShowTaskModal(true); }}
+              className="flex items-center px-3 py-2 bg-white hover:bg-gray-200 text-gray-950 text-sm font-semibold rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Create Task
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Kanban Columns */}
@@ -298,16 +324,29 @@ export const BoardPage = () => {
                 </div>
               </div>
 
-              {/* Status */}
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1">Status</label>
-                <select 
-                  value={newTaskStatus} 
-                  onChange={e => setNewTaskStatus(e.target.value as TaskStatus)}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-white transition-colors"
-                >
-                  {COLUMNS.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-                </select>
+              {/* Status and Sprint Row */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Status</label>
+                  <select 
+                    value={newTaskStatus} 
+                    onChange={e => setNewTaskStatus(e.target.value as TaskStatus)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-white transition-colors"
+                  >
+                    {COLUMNS.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Sprint</label>
+                  <select 
+                    value={newTaskSprintId} 
+                    onChange={e => setNewTaskSprintId(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-white transition-colors"
+                  >
+                    <option value="">Backlog</option>
+                    {sprints.map((s: any) => <option key={s.sprintId} value={s.sprintId}>{s.name}</option>)}
+                  </select>
+                </div>
               </div>
 
               {/* Description */}
@@ -400,7 +439,7 @@ const KanbanCard = ({ task, isOverlay = false }: { task: Task, isOverlay?: boole
 
   return (
     <div 
-      onClick={(e) => {
+      onClick={() => {
         if (!isOverlay && slug && key) {
           navigate(`/w/${slug}/projects/${key}/tasks/${task.taskKey}`);
         }

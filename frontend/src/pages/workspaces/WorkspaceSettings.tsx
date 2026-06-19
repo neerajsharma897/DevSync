@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { Save, AlertTriangle, Image as ImageIcon, X } from 'lucide-react';
@@ -7,14 +7,14 @@ import { apiFetch } from '../../lib/api.js';
 export const WorkspaceSettings = () => {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { name, slug: currentSlug, isOwner } = useCurrentWorkspaceStore();
+  const { name, isOwner, isAdmin } = useCurrentWorkspaceStore();
 
-  // RBAC Guard: owner only
+  // RBAC Guard: admin or owner
   useEffect(() => {
-    if (!isOwner()) {
+    if (!isAdmin()) {
       navigate(`/w/${slug}`, { replace: true });
     }
-  }, [isOwner, slug, navigate]);
+  }, [isAdmin, slug, navigate]);
 
   const [wsName, setWsName] = useState(name || '');
   const [description, setDescription] = useState('');
@@ -100,25 +100,27 @@ export const WorkspaceSettings = () => {
         </div>
 
         {/* Danger Zone */}
-        <div className="border border-red-500/20 bg-red-500/5 rounded-xl p-6">
-          <h2 className="text-lg font-bold text-red-500 mb-2 flex items-center">
-            <AlertTriangle className="w-5 h-5 mr-2" />
-            Danger Zone
-          </h2>
-          <p className="text-gray-400 text-sm mb-6">
-            Deleting this workspace will permanently remove all projects, channels, tasks, and messages associated with it. This action cannot be undone.
-          </p>
-          
-          <div className="flex items-center justify-between p-4 bg-gray-950 border border-red-500/20 rounded-lg">
-            <div>
-              <h4 className="font-semibold text-gray-200">Delete Workspace</h4>
-              <p className="text-xs text-gray-500">Permanently remove everything.</p>
+        {isOwner() && (
+          <div className="border border-red-500/20 bg-red-500/5 rounded-xl p-6">
+            <h2 className="text-lg font-bold text-red-500 mb-2 flex items-center">
+              <AlertTriangle className="w-5 h-5 mr-2" />
+              Danger Zone
+            </h2>
+            <p className="text-gray-400 text-sm mb-6">
+              Deleting this workspace will permanently remove all projects, channels, tasks, and messages associated with it. This action cannot be undone.
+            </p>
+            
+            <div className="flex items-center justify-between p-4 bg-gray-950 border border-red-500/20 rounded-lg">
+              <div>
+                <h4 className="font-semibold text-gray-200">Delete Workspace</h4>
+                <p className="text-xs text-gray-500">Permanently remove everything.</p>
+              </div>
+              <button onClick={() => setDeleteModalOpen(true)} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-lg transition-colors">
+                Delete Workspace
+              </button>
             </div>
-            <button onClick={() => setDeleteModalOpen(true)} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-lg transition-colors">
-              Delete Workspace
-            </button>
           </div>
-        </div>
+        )}
 
         {/* Delete Confirm Modal */}
         {deleteModalOpen && (

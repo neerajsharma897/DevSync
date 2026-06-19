@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, useParams, NavLink, useNavigate } from 'react-router-dom';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { useAuthStore } from '../../store/auth.js';
-import { Hash, Lock, Search, Bell, Settings, Plus, FolderKanban, Loader2, Home, X, MessageCircle, LogOut, ChevronDown as ChevronDownIcon, User } from 'lucide-react';
+import { Hash, Lock, Search, Bell, Settings, Plus, FolderKanban, Loader2, Home, X, LogOut, ChevronDown as ChevronDownIcon } from 'lucide-react';
 import clsx from 'clsx';
 
 export const WorkspaceLayout = () => {
@@ -230,8 +230,8 @@ export const WorkspaceLayout = () => {
 
         </div>
 
-        {/* Workspace Settings — only visible to owner */}
-        {isOwner() && (
+        {/* Workspace Settings — only visible to admin/owner */}
+        {isAdmin() && (
           <div className="p-4 border-t border-gray-800/60" onClick={() => navigate(`/w/${slug}/settings`)}>
             <div className="flex items-center justify-between cursor-pointer group">
               <div className="flex items-center space-x-2">

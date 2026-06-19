@@ -3,14 +3,25 @@ import { useParams } from 'react-router-dom';
 import { Shield, User, UserPlus, MoreHorizontal, Mail, X, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 
+import { useAuthStore } from '../../store/auth.js';
+import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
+
 export const ProjectMembers = () => {
   const { slug, key } = useParams();
   const [members, setMembers] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+
   const [showModal, setShowModal] = useState(false);
   const [targetEmail, setTargetEmail] = useState('');
   const [targetRole, setTargetRole] = useState('developer');
   const [isAdding, setIsAdding] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+
+  const currentUser = useAuthStore(state => state.user);
+  const { isAdmin } = useCurrentWorkspaceStore();
+  
+  const myMembership = members.find(m => m.userId === currentUser?.userId);
+  const isProjectAdmin = myMembership?.role === 'project_admin';
+  const canAddMember = isAdmin() || isProjectAdmin;
 
   useEffect(() => {
     const fetchMembers = async () => {
@@ -20,8 +31,6 @@ export const ProjectMembers = () => {
         setMembers(data.members || []);
       } catch (err) {
         console.error(err);
-      } finally {
-        setIsLoading(false);
       }
     };
     if (slug && key) fetchMembers();
@@ -61,6 +70,41 @@ export const ProjectMembers = () => {
     }
   };
 
+  const handleRemove = async (userId: string) => {
+    if (!confirm('Remove this member from the project?')) return;
+    try {
+      const { apiFetch } = await import('../../lib/api.js');
+      await apiFetch(`/workspaces/${slug}/projects/${key}/members/${userId}`, { method: 'DELETE' });
+      const data = await apiFetch(`/workspaces/${slug}/projects/${key}/members`);
+      setMembers(data.members || []);
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove member.');
+    }
+    setActiveDropdown(null);
+  };
+
+  const handleChangeRole = async (userId: string, newRole: string) => {
+    try {
+      const { apiFetch } = await import('../../lib/api.js');
+      await apiFetch(`/workspaces/${slug}/projects/${key}/members/${userId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ role: newRole })
+      });
+      const data = await apiFetch(`/workspaces/${slug}/projects/${key}/members`);
+      setMembers(data.members || []);
+    } catch (err: any) {
+      alert(err.message || 'Failed to update role.');
+    }
+    setActiveDropdown(null);
+  };
+
+  const canActOn = (member: any) => {
+    if (member.userId === currentUser?.userId) return false;
+    if (isAdmin()) return true;
+    if (isProjectAdmin) return member.role !== 'project_admin';
+    return false;
+  };
+
   return (
     <div className="h-full overflow-y-auto p-8 font-sans bg-gray-950 text-gray-200">
       <div className="flex items-center justify-between mb-8">
@@ -68,13 +112,15 @@ export const ProjectMembers = () => {
           <h2 className="text-2xl font-bold text-white mb-1">Project Members</h2>
           <p className="text-sm text-gray-400">Manage who has access to {key}.</p>
         </div>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="flex items-center px-4 py-2 bg-gray-400 hover:bg-white text-white font-bold rounded-lg transition-colors"
-        >
-          <UserPlus className="w-4 h-4 mr-2" />
-          Add Member
-        </button>
+        {canAddMember && (
+          <button 
+            onClick={() => setShowModal(true)}
+            className="flex items-center px-4 py-2 bg-gray-400 hover:bg-white text-white font-bold rounded-lg transition-colors"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            Add Member
+          </button>
+        )}
       </div>
 
       {showModal && (
@@ -164,10 +210,40 @@ export const ProjectMembers = () => {
                   </div>
                 </td>
 
-                <td className="px-6 py-4 text-right">
-                  <button className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded transition-colors opacity-0 group-hover:opacity-100">
-                    <MoreHorizontal className="w-5 h-5" />
-                  </button>
+                <td className="px-6 py-4 text-right relative">
+                  {canActOn(member) && (
+                    <div className="relative inline-block">
+                      <button 
+                        onClick={() => setActiveDropdown(activeDropdown === member.userId ? null : member.userId)}
+                        className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                      >
+                        <MoreHorizontal className="w-5 h-5" />
+                      </button>
+
+                      {activeDropdown === member.userId && (
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden">
+                          {member.role !== 'project_admin' && (
+                            <button onClick={() => handleChangeRole(member.userId, 'project_admin')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors">
+                              Make Project Admin
+                            </button>
+                          )}
+                          {member.role !== 'developer' && (
+                            <button onClick={() => handleChangeRole(member.userId, 'developer')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors">
+                              Make Developer
+                            </button>
+                          )}
+                          {member.role !== 'viewer' && (
+                            <button onClick={() => handleChangeRole(member.userId, 'viewer')} className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-800 transition-colors">
+                              Make Viewer
+                            </button>
+                          )}
+                          <button onClick={() => handleRemove(member.userId)} className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-gray-800 transition-colors border-t border-gray-800">
+                            Remove from Project
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

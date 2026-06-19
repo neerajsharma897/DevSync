@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, MessageSquare, FileEdit, CheckCircle2, GitBranch, IterationCcw, Filter } from 'lucide-react';
+import { Bell, Check, MessageSquare, FileEdit, CheckCircle2, GitBranch, IterationCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { apiFetch } from '../lib/api.js';
 

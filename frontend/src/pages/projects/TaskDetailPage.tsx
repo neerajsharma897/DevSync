@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../lib/api.js';
-import { Loader2, ArrowLeft, MoreHorizontal, User, AlignLeft, MessageSquare, Activity, CheckCircle2, Trash2, X, Bug, BookOpen, Zap, CheckSquare, Layers, Send } from 'lucide-react';
+import { Loader2, ArrowLeft, AlignLeft, Activity, CheckCircle2, Trash2, X, Send, GitCommit } from 'lucide-react';
 import { format } from 'date-fns';
 import clsx from 'clsx';
+import { useAuthStore } from '../../store/auth.js';
+import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 
 const STATUSES = [
   { value: 'TODO', label: 'To Do' },
@@ -33,6 +35,13 @@ export const TaskDetailPage = () => {
   const [task, setTask] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [members, setMembers] = useState<any[]>([]);
+  const [sprints, setSprints] = useState<any[]>([]);
+
+  // Auth and permissions
+  const currentUser = useAuthStore(state => state.user);
+  const { isAdmin } = useCurrentWorkspaceStore();
+  const myMembership = members.find(m => m.userId === currentUser?.userId);
+  const canEditTask = isAdmin() || (myMembership && myMembership.role !== 'viewer');
 
   // Editable states
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -40,22 +49,42 @@ export const TaskDetailPage = () => {
   const [isEditingDesc, setIsEditingDesc] = useState(false);
   const [editDesc, setEditDesc] = useState('');
   const [labelInput, setLabelInput] = useState('');
-  const [commentText, setCommentText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  // New feature states
+  const [allTasks, setAllTasks] = useState<any[]>([]);
+  const [comments, setComments] = useState<any[]>([]);
+  const [linkedCommits, setLinkedCommits] = useState<any[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [isPostingComment, setIsPostingComment] = useState(false);
 
   useEffect(() => {
     const fetchTask = async () => {
       setIsLoading(true);
       try {
-        const [taskData, membersData] = await Promise.all([
+        const [taskData, membersData, sprintsData, allTasksData, commentsData] = await Promise.all([
           apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${taskKey}`),
           apiFetch(`/workspaces/${slug}/projects/${key}/members`),
+          apiFetch(`/workspaces/${slug}/projects/${key}/sprints`),
+          apiFetch(`/workspaces/${slug}/projects/${key}/tasks`),
+          apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${taskKey}/comments`),
         ]);
+
+        let commitsData = [];
+        try {
+          const cRes = await apiFetch(`/workspaces/${slug}/projects/${key}/github/commits`);
+          commitsData = cRes.commits || [];
+        } catch (e) {}
         setTask(taskData.task);
         setEditTitle(taskData.task.title);
         const descVal = typeof taskData.task.description === 'string' ? taskData.task.description : taskData.task.descriptionText || '';
         setEditDesc(descVal);
+        setEditDesc(descVal);
         setMembers(membersData.members || []);
+        setSprints(sprintsData.sprints || []);
+        setAllTasks(allTasksData.tasks || []);
+        setComments(commentsData.comments || []);
+        setLinkedCommits(commitsData.filter((c: any) => c.taskId === taskData.task.taskId));
       } catch (err) {
         console.error('Failed to load task', err);
       } finally {
@@ -66,6 +95,7 @@ export const TaskDetailPage = () => {
   }, [slug, key, taskKey]);
 
   const patchTask = async (fields: Record<string, any>) => {
+    if (!canEditTask) return;
     setIsSaving(true);
     try {
       await apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${taskKey}`, {
@@ -81,6 +111,7 @@ export const TaskDetailPage = () => {
   };
 
   const handleDeleteTask = async () => {
+    if (!canEditTask) return;
     if (!confirm('Are you sure you want to delete this task? This cannot be undone.')) return;
     try {
       await apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${taskKey}`, { method: 'DELETE' });
@@ -91,6 +122,7 @@ export const TaskDetailPage = () => {
   };
 
   const handleTitleSave = () => {
+    if (!canEditTask) return;
     if (editTitle.trim() && editTitle !== task.title) {
       patchTask({ title: editTitle.trim() });
     }
@@ -98,6 +130,7 @@ export const TaskDetailPage = () => {
   };
 
   const handleDescSave = () => {
+    if (!canEditTask) return;
     if (editDesc !== (task.description || '')) {
       patchTask({ description: editDesc });
     }
@@ -105,6 +138,7 @@ export const TaskDetailPage = () => {
   };
 
   const addLabel = () => {
+    if (!canEditTask) return;
     if (!labelInput.trim()) return;
     const currentLabels = task.labels || [];
     if (!currentLabels.includes(labelInput.trim())) {
@@ -115,8 +149,26 @@ export const TaskDetailPage = () => {
   };
 
   const removeLabel = (label: string) => {
+    if (!canEditTask) return;
     const newLabels = (task.labels || []).filter((l: string) => l !== label);
     patchTask({ labels: newLabels });
+  };
+
+  const handlePostComment = async () => {
+    if (!commentText.trim() || isPostingComment) return;
+    setIsPostingComment(true);
+    try {
+      const data = await apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${taskKey}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ bodyText: commentText.trim() }),
+      });
+      setComments(prev => [...prev, data.comment]);
+      setCommentText('');
+    } catch (err: any) {
+      alert(err.message || 'Failed to post comment');
+    } finally {
+      setIsPostingComment(false);
+    }
   };
 
   if (isLoading) {
@@ -149,12 +201,14 @@ export const TaskDetailPage = () => {
           {isSaving && <Loader2 className="w-4 h-4 animate-spin text-gray-500" />}
         </div>
         <div className="flex items-center space-x-3">
-          <button 
-            onClick={handleDeleteTask}
-            className="text-sm font-medium px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20 rounded transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {canEditTask && (
+            <button 
+              onClick={handleDeleteTask}
+              className="text-sm font-medium px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 border border-red-500/20 rounded transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -179,9 +233,9 @@ export const TaskDetailPage = () => {
               </div>
             ) : (
               <h1 
-                className="text-3xl font-bold text-gray-100 mb-4 leading-snug cursor-pointer hover:text-white transition-colors"
-                onClick={() => setIsEditingTitle(true)}
-                title="Click to edit title"
+                className={clsx("text-3xl font-bold text-gray-100 mb-4 leading-snug transition-colors", canEditTask && "cursor-pointer hover:text-white")}
+                onClick={() => canEditTask && setIsEditingTitle(true)}
+                title={canEditTask ? "Click to edit title" : undefined}
               >
                 {task.title}
               </h1>
@@ -195,7 +249,7 @@ export const TaskDetailPage = () => {
                 <AlignLeft className="w-5 h-5" />
                 <h3>Description</h3>
               </div>
-              {!isEditingDesc && (
+              {canEditTask && !isEditingDesc && (
                 <button onClick={() => setIsEditingDesc(true)} className="text-xs text-gray-500 hover:text-white transition-colors">
                   Edit
                 </button>
@@ -217,11 +271,11 @@ export const TaskDetailPage = () => {
               </div>
             ) : (
               <div 
-                className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-h-[100px] cursor-pointer hover:border-gray-700 transition-colors"
-                onClick={() => setIsEditingDesc(true)}
+                className={clsx("bg-gray-900/50 border border-gray-800 rounded-xl p-4 min-h-[100px] transition-colors", canEditTask && "cursor-pointer hover:border-gray-700")}
+                onClick={() => canEditTask && setIsEditingDesc(true)}
               >
                 <p className="text-gray-400 text-sm leading-relaxed whitespace-pre-wrap">
-                  {(typeof task.description === 'string' && task.description) || task.descriptionText || 'Click to add a description...'}
+                  {(typeof task.description === 'string' && task.description) || task.descriptionText || (canEditTask ? 'Click to add a description...' : 'No description provided.')}
                 </p>
               </div>
             )}
@@ -243,22 +297,39 @@ export const TaskDetailPage = () => {
                   value={commentText}
                   onChange={e => setCommentText(e.target.value)}
                   placeholder="Add a comment..." 
-                  className="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50"
+                  disabled={isPostingComment}
+                  className="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-gray-200 focus:outline-none focus:border-white/50 focus:ring-1 focus:ring-white/50 disabled:opacity-50"
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && commentText.trim()) {
-                      // Comment posting would go here
-                      setCommentText('');
-                    }
+                    if (e.key === 'Enter') handlePostComment();
                   }}
                 />
                 <button 
-                  disabled={!commentText.trim()}
+                  onClick={handlePostComment}
+                  disabled={!commentText.trim() || isPostingComment}
                   className="px-3 py-2 bg-white text-gray-950 rounded-lg disabled:opacity-30 hover:bg-gray-200 transition-colors"
                 >
-                  <Send className="w-4 h-4" />
+                  {isPostingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 </button>
               </div>
             </div>
+
+            {/* Comments List */}
+            {comments.map(c => (
+              <div key={c.commentId} className="flex space-x-4 items-start mb-6">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-600 flex items-center justify-center text-white text-xs font-bold shrink-0 border border-gray-600">
+                  {c.authorName ? c.authorName.charAt(0).toUpperCase() : '?'}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-baseline space-x-2">
+                    <span className="font-semibold text-gray-200">{c.authorName || 'Unknown User'}</span>
+                    <span className="text-xs text-gray-500">{format(new Date(c.createdAt), 'MMM d, yyyy h:mm a')}</span>
+                  </div>
+                  <div className="mt-1 text-sm text-gray-300 bg-gray-900/50 border border-gray-800 rounded-lg p-3 whitespace-pre-wrap">
+                    {c.bodyText}
+                  </div>
+                </div>
+              </div>
+            ))}
             
             {/* History item */}
             <div className="flex space-x-4 items-start">
@@ -291,7 +362,8 @@ export const TaskDetailPage = () => {
                 <select
                   value={task.status}
                   onChange={e => patchTask({ status: e.target.value })}
-                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm font-semibold focus:outline-none"
+                  disabled={!canEditTask}
+                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm font-semibold focus:outline-none disabled:opacity-50"
                 >
                   {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
@@ -303,7 +375,8 @@ export const TaskDetailPage = () => {
                 <select
                   value={task.type || 'task'}
                   onChange={e => patchTask({ type: e.target.value })}
-                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none"
+                  disabled={!canEditTask}
+                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none disabled:opacity-50"
                 >
                   {ISSUE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
@@ -315,7 +388,8 @@ export const TaskDetailPage = () => {
                 <select
                   value={task.priority}
                   onChange={e => patchTask({ priority: e.target.value })}
-                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none"
+                  disabled={!canEditTask}
+                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none disabled:opacity-50"
                 >
                   {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
@@ -327,7 +401,8 @@ export const TaskDetailPage = () => {
                 <select
                   value={task.assigneeId || ''}
                   onChange={e => patchTask({ assigneeId: e.target.value || null })}
-                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none max-w-[160px]"
+                  disabled={!canEditTask}
+                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none max-w-[160px] disabled:opacity-50"
                 >
                   <option value="">Unassigned</option>
                   {members.map((m: any) => (
@@ -356,8 +431,41 @@ export const TaskDetailPage = () => {
                   type="date"
                   value={task.dueDate ? task.dueDate.substring(0, 10) : ''}
                   onChange={e => patchTask({ dueDate: e.target.value || null })}
-                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none"
+                  disabled={!canEditTask}
+                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none disabled:opacity-50"
                 />
+              </div>
+
+              {/* Sprint */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Sprint</span>
+                <select
+                  value={task.sprintId || ''}
+                  onChange={e => patchTask({ sprintId: e.target.value || null })}
+                  disabled={!canEditTask}
+                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none max-w-[160px] disabled:opacity-50"
+                >
+                  <option value="">Backlog</option>
+                  {sprints.map((s: any) => (
+                    <option key={s.sprintId} value={s.sprintId}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Parent Task */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-500">Parent Task</span>
+                <select
+                  value={task.parentTaskId || ''}
+                  onChange={e => patchTask({ parentTaskId: e.target.value || null })}
+                  disabled={!canEditTask}
+                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none max-w-[160px] disabled:opacity-50"
+                >
+                  <option value="">None</option>
+                  {allTasks.filter(t => t.taskId !== task.taskId).map((t: any) => (
+                    <option key={t.taskId} value={t.taskId}>{t.taskKey} - {t.title.substring(0, 20)}...</option>
+                  ))}
+                </select>
               </div>
 
               {/* Points */}
@@ -369,7 +477,8 @@ export const TaskDetailPage = () => {
                   max="100"
                   value={task.points || ''}
                   onChange={e => patchTask({ points: e.target.value ? parseInt(e.target.value) : null })}
-                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none w-16 text-right"
+                  disabled={!canEditTask}
+                  className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-sm focus:outline-none w-16 text-right disabled:opacity-50"
                   placeholder="—"
                 />
               </div>
@@ -381,24 +490,52 @@ export const TaskDetailPage = () => {
                   {(task.labels || []).map((label: string, idx: number) => (
                     <span key={idx} className="flex items-center bg-white/10 border border-white/20 text-gray-300 text-xs px-2 py-0.5 rounded">
                       {label}
-                      <button onClick={() => removeLabel(label)} className="ml-1.5 text-gray-500 hover:text-white">
-                        <X className="w-3 h-3" />
-                      </button>
+                      {canEditTask && (
+                        <button onClick={() => removeLabel(label)} className="ml-1.5 text-gray-500 hover:text-white">
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
                     </span>
                   ))}
                 </div>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={labelInput}
-                    onChange={e => setLabelInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLabel(); } }}
-                    className="flex-1 bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-xs focus:outline-none"
-                    placeholder="Add label..."
-                  />
-                  <button onClick={addLabel} className="text-xs text-gray-400 hover:text-white">Add</button>
-                </div>
+                {canEditTask && (
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={labelInput}
+                      onChange={e => setLabelInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addLabel(); } }}
+                      className="flex-1 bg-gray-800 border border-gray-700 text-gray-300 rounded px-2 py-1 text-xs focus:outline-none"
+                      placeholder="Add label..."
+                    />
+                    <button onClick={addLabel} className="text-xs text-gray-400 hover:text-white">Add</button>
+                  </div>
+                )}
               </div>
+
+              {/* Linked Commits */}
+              <div className="pt-4 border-t border-gray-800/80">
+                <div className="flex items-center space-x-2 mb-3">
+                  <GitCommit className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-300 font-semibold">Linked Commits</span>
+                </div>
+                {linkedCommits.length === 0 ? (
+                  <p className="text-xs text-gray-500 italic">No commits linked yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {linkedCommits.map(c => (
+                      <a key={c.commitSha} href={c.url} target="_blank" rel="noopener noreferrer" className="block bg-gray-900 border border-gray-800 rounded p-2 hover:border-gray-600 transition-colors">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-mono text-xs text-blue-400">{c.commitSha.substring(0, 7)}</span>
+                          <span className="text-[10px] text-gray-500">{format(new Date(c.committedAt), 'MMM d, yyyy')}</span>
+                        </div>
+                        <p className="text-xs text-gray-300 truncate" title={c.messageHeadline}>{c.messageHeadline}</p>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+
 
               {/* Created / Updated */}
               <div className="pt-2 border-t border-gray-800 space-y-2">

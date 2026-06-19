@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../lib/api.js';
 import { Loader2, CheckCircle2, XCircle, UserPlus, ArrowRight } from 'lucide-react';

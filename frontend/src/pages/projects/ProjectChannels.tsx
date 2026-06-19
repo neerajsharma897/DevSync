@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Hash, Plus, X, Loader2, Lock } from 'lucide-react';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
-import clsx from 'clsx';
+
 
 export const ProjectChannels = () => {
   const { slug, key } = useParams();

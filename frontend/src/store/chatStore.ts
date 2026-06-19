@@ -6,10 +6,10 @@ export interface Message {
   messageId: string;
   channelId: string;
   senderId: string;
-  content: string; // HTML from Tiptap
+  bodyText: string; // HTML from Tiptap
   createdAt: string;
-  senderName?: string;
-  senderAvatar?: string;
+  authorName?: string;
+  authorAvatar?: string;
   threadCount?: number;
 }
 
@@ -37,17 +37,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // 1. Fetch historical messages
     try {
       const data = await apiFetch(`/workspaces/${slug}/channels/${channelId}/messages`);
-      set({ messages: data.messages?.reverse() || [], isLoading: false });
+      set({ messages: data.messages || [], isLoading: false });
     } catch (err) {
       console.error('Failed to load messages', err);
       set({ isLoading: false });
     }
 
-    // 2. Setup Socket
+    // Setup Socket
     const socket = socketClient.getSocket();
     
     // Join the room for this channel
-    socket.emit('join_channel', { channelId });
+    socket.emit('join_room', `channel:${channelId}`);
 
     // Listen for new messages
     socket.off('new_message'); // Remove old listeners just in case
@@ -63,7 +63,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const channelId = get().activeChannelId;
     if (channelId) {
       const socket = socketClient.getSocket();
-      socket.emit('leave_channel', { channelId });
+      socket.emit('leave_room', `channel:${channelId}`);
     }
     set({ activeChannelId: null, messages: [] });
   },
@@ -81,9 +81,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const data = await apiFetch(`/workspaces/${slug}/channels/${channelId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ bodyText: content }),
       });
-      get().addIncomingMessage(data.message);
+      get().addIncomingMessage(data.data);
     } catch (err) {
       console.error('Failed to send message:', err);
     }

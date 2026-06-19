@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useChatStore } from '../../store/chatStore.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { useAuthStore } from '../../store/auth.js';
 import { TiptapEditor } from '../../components/chat/TiptapEditor.js';
-import { Hash, Lock, Users, Loader2, Smile, MessageSquare, MoreHorizontal, X, Edit2 } from 'lucide-react';
+import { Hash, Lock, Users, Loader2, Smile, MessageSquare, X, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiFetch } from '../../lib/api.js';
 
@@ -12,7 +12,7 @@ export const ChannelPage = () => {
   const { slug, channelId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { channels, memberCount, isAdmin, fetchWorkspaceData } = useCurrentWorkspaceStore();
+  const { channels, memberCount, isAdmin, fetchWorkspaceData, myRole } = useCurrentWorkspaceStore();
   const { messages, isLoading, joinChannel, leaveChannel, sendMessage } = useChatStore();
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -24,6 +24,34 @@ export const ChannelPage = () => {
   const [activeThreadMessageId, setActiveThreadMessageId] = useState<string | null>(null);
   const [threadReplies, setThreadReplies] = useState<any[]>([]);
   const [isThreadLoading, setIsThreadLoading] = useState(false);
+  const [canChat, setCanChat] = useState(true);
+
+  useEffect(() => {
+    const checkPermissions = async () => {
+      if (!currentChannel) return;
+
+      if (currentChannel.projectId) {
+        try {
+          const data = await apiFetch(`/workspaces/${slug}/projects/${currentChannel.projectId}/members`);
+          const members = data.members || [];
+          const myMembership = members.find((m: any) => m.userId === user?.userId);
+          
+          if (isAdmin()) {
+            setCanChat(true);
+          } else {
+            setCanChat(myMembership?.role !== 'viewer');
+          }
+        } catch (err) {
+          console.error(err);
+          setCanChat(false);
+        }
+      } else {
+        // All workspace roles ('owner', 'admin', 'member') can chat in workspace channels
+        setCanChat(true);
+      }
+    };
+    checkPermissions();
+  }, [currentChannel?.channelId, currentChannel?.projectId, slug, user?.userId, isAdmin, myRole]);
 
   useEffect(() => {
     if (slug && channelId) {
@@ -72,9 +100,9 @@ export const ChannelPage = () => {
       try {
         const data = await apiFetch(`/workspaces/${slug}/channels/${channelId}/messages`, {
           method: 'POST',
-          body: JSON.stringify({ content, threadId: activeThreadMessageId }),
+          body: JSON.stringify({ bodyText: content, threadId: activeThreadMessageId }),
         });
-        setThreadReplies([...threadReplies, data.message]);
+        setThreadReplies([...threadReplies, data.data]);
       } catch (err: any) {
         alert(err.message || 'Failed to send reply');
       }
@@ -120,7 +148,7 @@ export const ChannelPage = () => {
   };
 
   const renderMessage = (msg: any, isThreadContext = false) => {
-    const isMe = msg.senderId === user?.userId;
+    const isMe = msg.authorId === user?.userId || msg.senderId === user?.userId;
     // Basic logic for headers (simplified for thread)
     const showHeader = true;
 
@@ -129,7 +157,7 @@ export const ChannelPage = () => {
         <div className="w-10 flex-shrink-0 flex justify-center">
           {showHeader && (
             <div className="w-9 h-9 rounded-md bg-gradient-to-br from-gray-700 to-gray-500 flex items-center justify-center text-white font-bold shadow-md border border-gray-800">
-              {msg.senderName?.[0]?.toUpperCase() || 'U'}
+              {msg.authorName?.[0]?.toUpperCase() || 'U'}
             </div>
           )}
         </div>
@@ -137,14 +165,14 @@ export const ChannelPage = () => {
         <div className="ml-3 flex-1 min-w-0">
           {showHeader && (
             <div className="flex items-baseline space-x-2 mb-0.5">
-              <span className="font-semibold text-gray-100">{msg.senderName || 'Unknown User'}</span>
+              <span className="font-semibold text-gray-100">{msg.authorName || 'Unknown User'}</span>
               <span className="text-xs text-gray-500">{msg.createdAt ? format(new Date(msg.createdAt), 'h:mm a') : ''}</span>
             </div>
           )}
           
           <div 
             className="text-gray-300 text-[15px] leading-relaxed prose prose-invert max-w-none prose-p:my-0 prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-800"
-            dangerouslySetInnerHTML={{ __html: msg.content }}
+            dangerouslySetInnerHTML={{ __html: msg.bodyText || '' }}
           />
 
           {!isThreadContext && msg.replyCount > 0 && (
@@ -245,7 +273,13 @@ export const ChannelPage = () => {
 
         {/* Input Area */}
         <div className="px-6 pb-6 pt-2 shrink-0">
-          <TiptapEditor onSubmit={handleSendMain} placeholder={`Message #${currentChannel?.name || 'channel'}`} />
+          {canChat ? (
+            <TiptapEditor onSubmit={handleSendMain} placeholder={`Message #${currentChannel?.name || 'channel'}`} />
+          ) : (
+            <div className="text-gray-500 text-sm text-center p-3 bg-gray-900/50 rounded-lg border border-gray-800">
+              You are a viewer and cannot send messages in this channel.
+            </div>
+          )}
         </div>
       </div>
 
@@ -287,7 +321,13 @@ export const ChannelPage = () => {
 
           {/* Thread Input Area */}
           <div className="p-4 bg-gray-950/80 border-t border-gray-800/60 shrink-0">
-            <TiptapEditor onSubmit={handleSendThread} placeholder="Reply to thread..." />
+            {canChat ? (
+              <TiptapEditor onSubmit={handleSendThread} placeholder="Reply to thread..." />
+            ) : (
+              <div className="text-gray-500 text-xs text-center p-2 bg-gray-900/50 rounded border border-gray-800">
+                Read-only
+              </div>
+            )}
           </div>
         </div>
       )}

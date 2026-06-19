@@ -1,15 +1,44 @@
-import React from 'react';
-import { Outlet, NavLink, useParams } from 'react-router-dom';
-import { Kanban, List, Settings, Filter, Plus, IterationCcw, Users, GitBranch, Hash } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Outlet, NavLink, useParams, useNavigate } from 'react-router-dom';
+import { Kanban, List, Settings, Filter, IterationCcw, Users, GitBranch, Hash } from 'lucide-react';
 import clsx from 'clsx';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
+import { useAuthStore } from '../../store/auth.js';
+import { apiFetch } from '../../lib/api.js';
 
 export const ProjectLayout = () => {
   const { slug, key } = useParams();
   const { projects, isAdmin } = useCurrentWorkspaceStore();
+  const currentUser = useAuthStore(state => state.user);
+  const navigate = useNavigate();
+  
+  const [isProjectAdmin, setIsProjectAdmin] = useState(false);
+
+  useEffect(() => {
+    const fetchRole = async () => {
+      try {
+        const data = await apiFetch(`/workspaces/${slug}/projects/${key}/members`);
+        const members = data.members || [];
+        const myMembership = members.find((m: any) => m.userId === currentUser?.userId);
+        setIsProjectAdmin(myMembership?.role === 'project_admin');
+      } catch (err) {
+        console.error('Failed to fetch project members for layout', err);
+      }
+    };
+    if (slug && key) fetchRole();
+  }, [slug, key, currentUser?.userId]);
   
   // Find current project details from the sidebar store
   const currentProject = projects.find(p => p.key === key?.toUpperCase());
+
+  // Handle invalid project keys
+  useEffect(() => {
+    if (!currentProject) {
+      navigate(`/w/${slug}/projects`, { replace: true });
+    }
+  }, [currentProject, navigate, slug]);
+
+  if (!currentProject) return null;
 
   const tabClass = ({ isActive }: { isActive: boolean }) => clsx(
     "flex items-center pb-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap",
@@ -69,11 +98,13 @@ export const ProjectLayout = () => {
             <Users className="w-4 h-4 mr-2" />
             Members
           </NavLink>
-          {/* Settings tab — visible to project_admin only (we fall back to workspace admin check for now) */}
-          <NavLink to={`/w/${slug}/projects/${key}/settings`} className={tabClass}>
-            <Settings className="w-4 h-4 mr-2" />
-            Settings
-          </NavLink>
+          {/* Settings tab — visible to project_admin or workspace admin */}
+          {(isAdmin() || isProjectAdmin) && (
+            <NavLink to={`/w/${slug}/projects/${key}/settings`} className={tabClass}>
+              <Settings className="w-4 h-4 mr-2" />
+              Settings
+            </NavLink>
+          )}
         </div>
       </div>
 

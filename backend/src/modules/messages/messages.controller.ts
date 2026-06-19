@@ -61,7 +61,7 @@ export const sendMessage = async (req: Request, res: Response): Promise<void> =>
     const io = getIO();
     io.to(`channel:${channelId}`).emit('new_message', populatedMessage);
 
-    res.status(201).json({ message: 'Message sent', data: result });
+    res.status(201).json({ message: 'Message sent', data: populatedMessage });
   } catch (err) {
     console.error('Send message error:', err);
     res.status(500).json({ error: 'Server error sending message.' });

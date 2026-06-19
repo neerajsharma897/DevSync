@@ -1,6 +1,6 @@
-import React from 'react';
+
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
-import { Activity, Hash, FolderKanban, ArrowRight, Users, Shield } from 'lucide-react';
+import { Hash, FolderKanban, ArrowRight, Users, Shield } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import clsx from 'clsx';
 
@@ -54,11 +54,9 @@ export const WorkspaceHome = () => {
           <Link to={`/w/${slug}/notifications`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
             View Notifications
           </Link>
-          {isAdmin() && (
-            <Link to={`/w/${slug}/members`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
-              Manage Members
-            </Link>
-          )}
+          <Link to={`/w/${slug}/members`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
+            {isAdmin() ? 'Manage Members' : 'View Members'}
+          </Link>
           {isOwner() && (
             <Link to={`/w/${slug}/settings`} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors">
               Workspace Settings

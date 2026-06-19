@@ -73,8 +73,10 @@ export const createProject = async (req: Request, res: Response): Promise<void> 
 export const listProjects = async (req: Request, res: Response): Promise<void> => {
   try {
     const { workspaceId } = req.params as Record<string, string>;
+    const userId = req.user!.userId;
+    const workspaceRole = req.workspaceRole; // attached by requireWorkspaceRole
 
-    const results = await db
+    let query = db
       .select({
         projectId: projects.projectId,
         name: projects.name,
@@ -91,6 +93,32 @@ export const listProjects = async (req: Request, res: Response): Promise<void> =
       .leftJoin(users, eq(projects.leadUserId, users.userId))
       .where(and(eq(projects.workspaceId, workspaceId), eq(projects.status, 'active')));
 
+    // If the user is just a regular workspace member, they can only see projects they are explicitly added to.
+    if (workspaceRole === 'member') {
+      // Create a subquery or join to filter
+      const results = await db
+        .select({
+          projectId: projects.projectId,
+          name: projects.name,
+          key: projects.key,
+          description: projects.description,
+          iconUrl: projects.iconUrl,
+          status: projects.status,
+          issueCounter: projects.issueCounter,
+          createdAt: projects.createdAt,
+          leadName: users.fullName,
+          leadAvatar: users.avatarUrl,
+        })
+        .from(projects)
+        .leftJoin(users, eq(projects.leadUserId, users.userId))
+        .innerJoin(projectMembers, and(eq(projects.projectId, projectMembers.projectId), eq(projectMembers.userId, userId)))
+        .where(and(eq(projects.workspaceId, workspaceId), eq(projects.status, 'active')));
+        
+      res.json({ projects: results });
+      return;
+    }
+
+    const results = await query;
     res.json({ projects: results });
   } catch (err) {
     console.error('List projects error:', err);

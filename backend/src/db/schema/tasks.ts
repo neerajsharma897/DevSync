@@ -48,10 +48,26 @@ export const tasks = pgTable('tasks', {
 ]);
 
 // ─── Relations ───────────────────────────────────────────────────────────────
-export const tasksRelations = relations(tasks, ({ one }) => ({
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
   project:    one(projects, { fields: [tasks.projectId], references: [projects.projectId] }),
   reporter:   one(users, { fields: [tasks.reporterId], references: [users.userId] }),
   assignee:   one(users, { fields: [tasks.assigneeId], references: [users.userId] }),
   parentTask: one(tasks, { fields: [tasks.parentTaskId], references: [tasks.taskId], relationName: 'subtasks' }),
   epic:       one(tasks, { fields: [tasks.epicId], references: [tasks.taskId], relationName: 'epicTasks' }),
+  comments:   many(taskComments),
+}));
+
+// ─── task_comments ───────────────────────────────────────────────────────────
+export const taskComments = pgTable('task_comments', {
+  commentId: uuid('comment_id').primaryKey().defaultRandom(),
+  taskId:    uuid('task_id').references(() => tasks.taskId, { onDelete: 'cascade' }),
+  authorId:  uuid('author_id').references(() => users.userId, { onDelete: 'set null' }),
+  bodyText:  text('body_text').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export const taskCommentsRelations = relations(taskComments, ({ one }) => ({
+  task:   one(tasks, { fields: [taskComments.taskId], references: [tasks.taskId] }),
+  author: one(users, { fields: [taskComments.authorId], references: [users.userId] }),
 }));
