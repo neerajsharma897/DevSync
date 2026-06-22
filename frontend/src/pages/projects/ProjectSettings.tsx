@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Save, AlertTriangle, GitBranch } from 'lucide-react';
+import { Save, AlertTriangle, GitBranch, Loader2, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../../lib/api.js';
+
 
 export const ProjectSettings = () => {
   const { slug, key } = useParams();
@@ -11,6 +12,15 @@ export const ProjectSettings = () => {
   const [description, setDescription] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // GitHub Connection State
+  const [githubConnection, setGithubConnection] = useState<any>(null);
+  const [githubLoading, setGithubLoading] = useState(true);
+  const [repoOwner, setRepoOwner] = useState('');
+  const [repoName, setRepoName] = useState('');
+  const [githubToken, setGithubToken] = useState('');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   useEffect(() => {
     const loadProject = async () => {
@@ -31,6 +41,16 @@ export const ProjectSettings = () => {
         
         if (!isAdmin && myMembership?.role !== 'project_admin') {
           navigate(`/w/${slug}/projects/${key}`, { replace: true });
+        }
+
+        // Load GitHub Connection
+        try {
+          const ghData = await apiFetch(`/workspaces/${slug}/projects/${key}/github/connection`);
+          setGithubConnection(ghData.connection);
+        } catch (err) {
+          console.error('Failed to load GitHub connection', err);
+        } finally {
+          setGithubLoading(false);
         }
 
       } catch (err) {
@@ -64,6 +84,47 @@ export const ProjectSettings = () => {
       navigate(`/w/${slug}`);
     } catch (err: any) {
       alert(err.message || 'Failed to archive project.');
+    }
+  };
+
+  const handleConnectGithub = async () => {
+    if (!repoOwner || !repoName || !githubToken) {
+      alert('Please fill in all GitHub connection fields.');
+      return;
+    }
+    setIsConnecting(true);
+    try {
+      const res = await apiFetch(`/workspaces/${slug}/projects/${key}/github/connect`, {
+        method: 'POST',
+        body: JSON.stringify({
+          repo_owner: repoOwner,
+          repo_name: repoName,
+          access_token: githubToken,
+        }),
+      });
+      setGithubConnection(res.connection);
+      setRepoOwner('');
+      setRepoName('');
+      setGithubToken('');
+    } catch (err: any) {
+      alert(err.message || 'Failed to connect repository.');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleDisconnectGithub = async () => {
+    if (!confirm('This will delete the webhook from GitHub and stop tracking new commits and CI runs. Existing data will be preserved. Proceed?')) return;
+    setIsDisconnecting(true);
+    try {
+      await apiFetch(`/workspaces/${slug}/projects/${key}/github/disconnect`, {
+        method: 'DELETE',
+      });
+      setGithubConnection(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to disconnect repository.');
+    } finally {
+      setIsDisconnecting(false);
     }
   };
 
@@ -118,6 +179,7 @@ export const ProjectSettings = () => {
           </div>
         </div>
 
+        {/* GitHub Connection Section */}
         <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-6 mb-8">
           <h2 className="text-lg font-bold text-white mb-2 flex items-center">
             <GitBranch className="w-5 h-5 mr-2 text-gray-400" />
@@ -125,20 +187,87 @@ export const ProjectSettings = () => {
           </h2>
           <p className="text-sm text-gray-400 mb-6">Link this project to a GitHub repository to track commits and CI/CD status on your tasks.</p>
           
-          <div className="flex items-center justify-between p-4 bg-gray-950 border border-gray-800 rounded-lg">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center">
-                <GitBranch className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h4 className="font-semibold text-gray-200">GitHub Details</h4>
-                <p className="text-xs text-gray-500">Manage connections on the dedicated GitHub tab.</p>
+          {githubLoading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="w-6 h-6 animate-spin text-gray-500" />
+            </div>
+          ) : githubConnection ? (
+            <div className="bg-gray-950 border border-gray-800 rounded-lg p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center space-x-3 mb-2">
+                    <h3 className="text-lg font-bold text-gray-200">
+                      <a href={`https://github.com/${githubConnection.githubRepoFullName}`} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                        {githubConnection.githubRepoFullName}
+                      </a>
+                    </h3>
+                    <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs px-2 py-0.5 rounded-full flex items-center">
+                      <CheckCircle2 className="w-3 h-3 mr-1" /> Active
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-sm text-gray-400">
+                    <p>Default Branch: <span className="font-mono text-gray-300">{githubConnection.defaultBranch}</span></p>
+                    <p>Connected by {githubConnection.connectedByName || 'a user'}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleDisconnectGithub} 
+                  disabled={isDisconnecting}
+                  className="px-4 py-2 border border-red-500/50 text-red-400 hover:bg-red-500/10 text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+                </button>
               </div>
             </div>
-            <button onClick={() => navigate(`/w/${slug}/projects/${key}/github`)} className="px-4 py-2 bg-white hover:bg-gray-200 text-gray-950 text-sm font-bold rounded-lg transition-colors">
-              Go to GitHub Settings
-            </button>
-          </div>
+          ) : (
+            <div className="bg-gray-950 border border-gray-800 rounded-lg p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1.5">Repo Owner</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. octocat"
+                    value={repoOwner}
+                    onChange={(e) => setRepoOwner(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-white/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1.5">Repo Name</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. my-repo"
+                    value={repoName}
+                    onChange={(e) => setRepoName(e.target.value)}
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-white/50"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-1.5">Personal Access Token</label>
+                <input 
+                  type="password" 
+                  placeholder="ghp_xxxxxxxxxxxx"
+                  value={githubToken}
+                  onChange={(e) => setGithubToken(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-white/50"
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  Generate a token at <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">github.com/settings/tokens</a> with scopes: <strong>repo</strong>, <strong>admin:repo_hook</strong>.
+                </p>
+              </div>
+              <div className="pt-2">
+                <button 
+                  onClick={handleConnectGithub} 
+                  disabled={isConnecting}
+                  className="flex items-center px-4 py-2 bg-white text-gray-950 hover:bg-gray-200 text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {isConnecting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  {isConnecting ? 'Connecting...' : 'Connect Repository'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="border border-red-500/20 bg-red-500/5 rounded-xl p-6">

@@ -270,6 +270,15 @@ body {
   transform: rotate(10deg);
 }
 
+/* ===== SEARCH HIGHLIGHT (ts_headline <mark>) ===== */
+mark {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border-radius: 2px;
+  padding: 0 2px;
+  font-weight: 600;
+}
+
 /* ===== KANBAN DRAG STYLES ===== */
 .kanban-dragging {
   opacity: 0.5;

@@ -19,7 +19,7 @@ export const notifications = pgTable('notifications', {
   //   task_assigned | task_mentioned | task_commented
   //   sprint_closed | sprint_started
   //   channel_mentioned | dm_received
-  //   ci_failed | commit_linked
+  //   ci_failed | ci_passed | commit_linked | commit_unlinked
   entityType:     varchar('entity_type', { length: 30 }).notNull(), // task|sprint|message|project
   entityId:       uuid('entity_id').notNull(),
   title:          varchar('title', { length: 255 }),

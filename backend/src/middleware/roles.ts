@@ -22,8 +22,8 @@ export const requireWorkspaceRole = (allowedRoles: ('owner' | 'admin' | 'member'
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user?.userId;
-      let workspaceId = req.params.workspaceId || req.body.workspaceId || req.query.workspaceId;
-      const slug = req.params.slug || req.body.slug || req.query.slug;
+      let workspaceId = req.params?.workspaceId || req.body?.workspaceId || req.query?.workspaceId;
+      const slug = req.params?.slug || req.body?.slug || req.query?.slug;
 
       if (!userId) {
         res.status(401).json({ error: 'Unauthorized. Auth context missing.' });
@@ -92,9 +92,9 @@ export const requireProjectRole = (allowedRoles: ('project_admin' | 'developer' 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.user?.userId;
-      let projectId = req.params.projectId || req.body.projectId || req.query.projectId;
-      const key = req.params.key || req.body.key || req.query.key;
-      const slug = req.params.slug || req.body.slug || req.query.slug;
+      let projectId = req.params?.projectId || req.body?.projectId || req.query?.projectId;
+      const key = req.params?.key || req.body?.key || req.query?.key;
+      const slug = req.params?.slug || req.body?.slug || req.query?.slug;
 
       if (!userId) {
         res.status(401).json({ error: 'Unauthorized. Auth context missing.' });

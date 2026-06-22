@@ -70,18 +70,17 @@ export const TaskDetailPage = () => {
 
         let commitsData = [];
         try {
-          const cRes = await apiFetch(`/workspaces/${slug}/projects/${key}/github/commits`);
+          const cRes = await apiFetch(`/workspaces/${slug}/projects/${key}/tasks/${taskKey}/github/commits`);
           commitsData = cRes.commits || [];
         } catch (e) {}
         setTask(taskData.task);
         setEditTitle(taskData.task.title);
         const descVal = typeof taskData.task.description === 'string' ? taskData.task.description : taskData.task.descriptionText || '';
         setEditDesc(descVal);
-        setEditDesc(descVal);
         setMembers(membersData.members || []);
         setSprints(sprintsData.sprints || []);
         setAllTasks(allTasksData.tasks || []);
-        setLinkedCommits(commitsData.filter((c: any) => c.taskId === taskData.task.taskId));
+        setLinkedCommits(commitsData);
       } catch (err) {
         console.error('Failed to load task', err);
       } finally {
@@ -457,10 +456,18 @@ export const TaskDetailPage = () => {
               <div className="pt-4 border-t border-gray-800/80">
                 <div className="flex items-center space-x-2 mb-3">
                   <GitCommit className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-300 font-semibold">Linked Commits</span>
+                  <span className="text-sm text-gray-300 font-semibold">
+                    Linked Commits
+                    {task.linkedCommitsCount > 0 && <span className="ml-2 bg-gray-800 text-gray-300 py-0.5 px-2 rounded-full text-[10px]">{task.linkedCommitsCount}</span>}
+                  </span>
                 </div>
                 {linkedCommits.length === 0 ? (
-                  <p className="text-xs text-gray-500 italic">No commits linked yet.</p>
+                  <div className="text-center py-4 bg-gray-900/40 border border-gray-800/80 rounded-lg">
+                    <p className="text-xs text-gray-400 mb-2 font-medium">No commits linked yet</p>
+                    <p className="text-[10px] text-gray-500 max-w-[200px] mx-auto leading-relaxed">
+                      Mention <span className="font-mono text-gray-300 bg-gray-800 px-1 rounded">{taskKey}</span> in a commit message to link it automatically.
+                    </p>
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     {linkedCommits.map(c => (

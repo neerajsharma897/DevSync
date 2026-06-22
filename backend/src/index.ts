@@ -14,6 +14,10 @@ app.use(cors({
   credentials: true,
 }));
 app.use(morgan('dev'));
+// ─── Webhooks (Must be before express.json) ────────────────────────────────
+import { githubWebhookRouter } from './modules/github/github.routes.js';
+app.use('/api/webhooks/github', githubWebhookRouter);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -58,9 +62,9 @@ app.use('/api/workspaces/:slug/files', filesRoutes);
 import messagesRoutes from './modules/messages/messages.routes.js';
 app.use('/api/workspaces/:slug/channels/:channelId/messages', messagesRoutes);
 
-import { githubWebhookRouter, githubConfigRouter } from './modules/github/github.routes.js';
-app.use('/api/webhooks/github', githubWebhookRouter);
+import { githubConfigRouter, githubTaskRouter } from './modules/github/github.routes.js';
 app.use('/api/workspaces/:slug/projects/:key/github', githubConfigRouter);
+app.use('/api/workspaces/:slug/projects/:key/tasks/:taskKey/github', githubTaskRouter);
 
 import searchRoutes from './modules/search/search.routes.js';
 app.use('/api/workspaces/:slug/search', searchRoutes);

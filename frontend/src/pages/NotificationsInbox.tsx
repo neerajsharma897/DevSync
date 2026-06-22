@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, MessageSquare, CheckCircle2, User, UserMinus, AtSign, ArrowRightLeft, Play, Hash, Mail, GitCommit, XCircle, Briefcase, Building2 } from 'lucide-react';
+import { Bell, Check, MessageSquare, CheckCircle2, User, UserMinus, AtSign, ArrowRightLeft, Play, Hash, Mail, Briefcase, Building2, GitBranch } from 'lucide-react';
 import clsx from 'clsx';
 import { useNotificationStore } from '../store/useNotificationStore';
 import { useCurrentWorkspaceStore } from '../store/currentWorkspace';
@@ -38,8 +38,10 @@ export const NotificationsInbox = () => {
       case 'sprint_closed': return { icon: CheckCircle2, color: 'text-gray-400 bg-gray-500/10 border-gray-500/20' };
       case 'channel_mentioned': return { icon: Hash, color: 'text-pink-400 bg-pink-500/10 border-pink-500/20' };
       case 'dm_received': return { icon: Mail, color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' };
-      case 'commit_linked': return { icon: GitCommit, color: 'text-orange-400 bg-orange-500/10 border-orange-500/20' };
-      case 'ci_failed': return { icon: XCircle, color: 'text-red-500 bg-red-500/10 border-red-500/20' };
+      case 'commit_linked': 
+      case 'commit_unlinked': return { icon: GitBranch, color: 'text-gray-200 bg-gray-700/50 border-gray-600/50' };
+      case 'ci_passed': return { icon: GitBranch, color: 'text-green-400 bg-green-500/10 border-green-500/20' };
+      case 'ci_failed': return { icon: GitBranch, color: 'text-red-500 bg-red-500/10 border-red-500/20' };
       case 'project_member_added': return { icon: Briefcase, color: 'text-teal-400 bg-teal-500/10 border-teal-500/20' };
       case 'workspace_invited': return { icon: Building2, color: 'text-blue-500 bg-blue-500/10 border-blue-500/20' };
       default: return { icon: Bell, color: 'text-gray-400 bg-white/10 border-white/20' };
@@ -55,7 +57,7 @@ export const NotificationsInbox = () => {
     if (filterType === 'tasks') filtered = filtered.filter(n => n.type.startsWith('task_'));
     else if (filterType === 'sprints') filtered = filtered.filter(n => n.type.startsWith('sprint_'));
     else if (filterType === 'messages') filtered = filtered.filter(n => n.type === 'channel_mentioned' || n.type === 'dm_received');
-    else if (filterType === 'github') filtered = filtered.filter(n => n.type === 'commit_linked' || n.type === 'ci_failed');
+    else if (filterType === 'github') filtered = filtered.filter(n => ['commit_linked', 'commit_unlinked', 'ci_failed', 'ci_passed'].includes(n.type));
     else if (filterType === 'membership') filtered = filtered.filter(n => n.type === 'project_member_added' || n.type === 'workspace_invited');
   }
 

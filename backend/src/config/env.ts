@@ -23,8 +23,12 @@ export const env = {
   // AI
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
 
+  // Encryption (for GitHub tokens, secrets)
+  ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || '',
+
   // Server
   PORT: parseInt(process.env.PORT || '3001', 10),
   NODE_ENV: process.env.NODE_ENV || 'development',
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
+  BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:3001',
 } as const;

@@ -25,7 +25,7 @@ router.use(requireAuth);
 router.use(requireWorkspaceRole(['owner', 'admin', 'member']));
 
 // ─── Project CRUD ────────────────────────────────────────────────────────────
-router.post('/', createProject);
+router.post('/', requireWorkspaceRole(['owner', 'admin']), createProject);
 router.get('/', listProjects);
 router.get('/:key', requireProjectRole(['project_admin', 'developer', 'viewer']), getProject);
 router.patch('/:key', requireProjectRole(['project_admin', 'developer']), updateProject);

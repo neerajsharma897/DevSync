@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, useParams, NavLink, useNavigate } from 'react-router-dom';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { useAuthStore } from '../../store/auth.js';
-import { Hash, Lock, Search, Bell, Settings, Plus, FolderKanban, Loader2, Home, X, LogOut, ChevronDown as ChevronDownIcon } from 'lucide-react';
+import { Hash, Lock, Search, Bell, Settings, Plus, FolderKanban, Loader2, Home, X, LogOut, ChevronDown as ChevronDownIcon, Command } from 'lucide-react';
+import { CommandPalette } from '../../components/layout/CommandPalette.js';
 import clsx from 'clsx';
 
 export const WorkspaceLayout = () => {
@@ -19,7 +20,20 @@ export const WorkspaceLayout = () => {
   const [isAnnouncementOnly, setIsAnnouncementOnly] = useState(false);
   const [isCreatingChannel, setIsCreatingChannel] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Global Ctrl+K / Cmd+K shortcut
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   useEffect(() => {
     if (slug) {
@@ -155,7 +169,7 @@ export const WorkspaceLayout = () => {
               <Home className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" />
               Dashboard
             </NavLink>
-            <button onClick={() => navigate(`/w/${slug}/search`)} className="w-full flex items-center px-2 py-1.5 rounded-md text-sm text-gray-400 hover:bg-gray-800/60 hover:text-gray-200 transition-colors group">
+            <button onClick={() => setShowCommandPalette(true)} className="w-full flex items-center px-2 py-1.5 rounded-md text-sm text-gray-400 hover:bg-gray-800/60 hover:text-gray-200 transition-colors group">
               <Search className="w-4 h-4 mr-2.5 opacity-70 group-hover:opacity-100" />
               Search
               <kbd className="ml-auto text-[10px] bg-gray-800 px-1.5 py-0.5 rounded text-gray-500">⌘K</kbd>
@@ -310,16 +324,20 @@ export const WorkspaceLayout = () => {
         <header className="h-14 px-6 flex items-center justify-between border-b border-gray-800/60 bg-gray-950 shrink-0">
           {/* Search */}
           <div className="flex items-center flex-1">
-            <div className="relative max-w-md w-full" onClick={() => navigate(`/w/${slug}/search`)}>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-              <input 
-                type="text" 
-                placeholder="Search tasks, messages..." 
-                className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-9 pr-4 py-1.5 text-sm text-gray-400 cursor-pointer focus:outline-none"
-                readOnly
-              />
-            </div>
-          </div>
+             <div className="relative max-w-md w-full cursor-pointer" onClick={() => setShowCommandPalette(true)}>
+               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+               <input 
+                 type="text" 
+                 placeholder="Search tasks, messages..." 
+                 className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-9 pr-16 py-1.5 text-sm text-gray-400 cursor-pointer focus:outline-none"
+                 readOnly
+               />
+               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-700 bg-gray-800 text-[10px] text-gray-500 font-mono">
+                 <Command size={10} />
+                 <span>K</span>
+               </div>
+             </div>
+           </div>
 
           <div className="flex items-center space-x-4">
             {/* Notifications Bell */}
@@ -499,6 +517,9 @@ export const WorkspaceLayout = () => {
           </div>
         </div>
       )}
+
+      {/* Command Palette Modal */}
+      <CommandPalette isOpen={showCommandPalette} onClose={() => setShowCommandPalette(false)} />
 
     </div>
   );
