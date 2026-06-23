@@ -35,3 +35,11 @@ githubWebhookRouter.post('/:projectId', express.raw({ type: 'application/json' }
 export const githubTaskRouter = Router({ mergeParams: true });
 githubTaskRouter.use(requireAuth);
 githubTaskRouter.get('/commits', requireProjectRole(['project_admin', 'developer', 'viewer']), getTaskCommits);
+
+// ─── User-level OAuth routes ────────────────────────────────────────────────
+import { exchangeGithubCode, getUserGithubRepos, getGithubOauthUrl } from './github.oauth.controller.js';
+export const githubUserRouter = Router();
+githubUserRouter.use(requireAuth);
+githubUserRouter.get('/oauth/url', getGithubOauthUrl);
+githubUserRouter.post('/oauth/exchange', exchangeGithubCode);
+githubUserRouter.get('/user/repos', getUserGithubRepos);

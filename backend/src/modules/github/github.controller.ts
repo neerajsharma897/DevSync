@@ -49,12 +49,26 @@ export const connectGithubRepo = async (req: Request, res: Response): Promise<vo
   try {
     const { projectId } = req.params as Record<string, string>;
     const userId = req.user!.userId;
-    const { repo_owner, repo_name, access_token } = req.body;
+    const { repo_owner, repo_name } = req.body;
 
-    if (!repo_owner || !repo_name || !access_token) {
-      res.status(400).json({ error: 'repo_owner, repo_name, and access_token are required.' });
+    if (!repo_owner || !repo_name) {
+      res.status(400).json({ error: 'repo_owner and repo_name are required.' });
       return;
     }
+
+    // Fetch the user's connected GitHub access token
+    const [user] = await db
+      .select({ githubAccessToken: users.githubAccessToken })
+      .from(users)
+      .where(eq(users.userId, userId))
+      .limit(1);
+
+    if (!user || !user.githubAccessToken) {
+      res.status(403).json({ error: 'GitHub account is not connected.' });
+      return;
+    }
+
+    const access_token = decrypt(user.githubAccessToken);
 
     // Check if already connected
     const [existing] = await db

@@ -6,6 +6,7 @@ import {
   LoginPage,
   RegisterPage,
   OAuthCallbackPage,
+  GithubCallbackPage,
   WorkspaceList,
   InviteAcceptancePage,
   WorkspaceLayout,
@@ -41,6 +42,7 @@ function App() {
         
         {/* --- OAuth Callback --- */}
         <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+        <Route path="/github/callback" element={<AuthGuard><GithubCallbackPage /></AuthGuard>} />
 
         {/* --- Invite Acceptance (Standalone outside shell) --- */}
         <Route path="/invite/:inviteToken" element={<AuthGuard><InviteAcceptancePage /></AuthGuard>} />
