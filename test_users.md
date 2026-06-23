@@ -27,8 +27,3 @@ These users have been automatically seeded into the database for manual integrat
 | Sam Kapoor | `sam@demo.com` | |
 | Tina Reyes | `tina@demo.com` | |
 
-## Testing Flow Recommendations
-
-1. **Login as Alice:** Use `alice@demo.com` and create the initial Workspace (e.g. "DevSync Labs").
-2. **Invite Members:** Go to the Workspace Settings / Members tab to send invites, then accept them as other users (e.g. Bob, Carol) to test Role-Based Access Control (RBAC).
-3. **Project Management:** Create a "Mobile App" project and assign Dave and Eve to test Kanban drag-and-drop.

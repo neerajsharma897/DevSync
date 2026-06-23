@@ -62,9 +62,10 @@ app.use('/api/workspaces/:slug/files', filesRoutes);
 import messagesRoutes from './modules/messages/messages.routes.js';
 app.use('/api/workspaces/:slug/channels/:channelId/messages', messagesRoutes);
 
-import { githubConfigRouter, githubTaskRouter } from './modules/github/github.routes.js';
+import { githubConfigRouter, githubTaskRouter, githubUserRouter } from './modules/github/github.routes.js';
 app.use('/api/workspaces/:slug/projects/:key/github', githubConfigRouter);
 app.use('/api/workspaces/:slug/projects/:key/tasks/:taskKey/github', githubTaskRouter);
+app.use('/api/github', githubUserRouter);
 
 import searchRoutes from './modules/search/search.routes.js';
 app.use('/api/workspaces/:slug/search', searchRoutes);

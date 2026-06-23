@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Save, AlertTriangle, GitBranch, Loader2, CheckCircle2 } from 'lucide-react';
 import { apiFetch } from '../../lib/api.js';
+import { supabase } from '../../lib/supabase.js';
 
 
 export const ProjectSettings = () => {
@@ -16,9 +17,13 @@ export const ProjectSettings = () => {
   // GitHub Connection State
   const [githubConnection, setGithubConnection] = useState<any>(null);
   const [githubLoading, setGithubLoading] = useState(true);
-  const [repoOwner, setRepoOwner] = useState('');
-  const [repoName, setRepoName] = useState('');
-  const [githubToken, setGithubToken] = useState('');
+  
+  // New OAuth State
+  const [isGithubAuthorized, setIsGithubAuthorized] = useState(false);
+  const [userRepos, setUserRepos] = useState<any[]>([]);
+  const [isFetchingRepos, setIsFetchingRepos] = useState(false);
+  const [selectedRepo, setSelectedRepo] = useState('');
+  
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
@@ -51,6 +56,22 @@ export const ProjectSettings = () => {
           console.error('Failed to load GitHub connection', err);
         } finally {
           setGithubLoading(false);
+        }
+
+        // Load User Repos (if authorized)
+        try {
+          setIsFetchingRepos(true);
+          const reposData = await apiFetch(`/github/user/repos`);
+          setUserRepos(reposData.repos);
+          setIsGithubAuthorized(true);
+        } catch (err: any) {
+          if (err.message && (err.message.includes('not connected') || err.message.includes('expired'))) {
+            setIsGithubAuthorized(false);
+          } else {
+            console.error('Failed to fetch user repos', err);
+          }
+        } finally {
+          setIsFetchingRepos(false);
         }
 
       } catch (err) {
@@ -87,25 +108,40 @@ export const ProjectSettings = () => {
     }
   };
 
+  const handleAuthorizeGithub = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          scopes: 'repo admin:repo_hook',
+          redirectTo: `${window.location.origin}/github/callback?returnTo=/w/${slug}/projects/${key}/settings`,
+        },
+      });
+      if (error) throw error;
+    } catch (err: any) {
+      alert(err.message || 'Failed to start GitHub authorization');
+    }
+  };
+
   const handleConnectGithub = async () => {
-    if (!repoOwner || !repoName || !githubToken) {
-      alert('Please fill in all GitHub connection fields.');
+    if (!selectedRepo) {
+      alert('Please select a repository.');
       return;
     }
+    const repo = userRepos.find(r => r.fullName === selectedRepo);
+    if (!repo) return;
+
     setIsConnecting(true);
     try {
       const res = await apiFetch(`/workspaces/${slug}/projects/${key}/github/connect`, {
         method: 'POST',
         body: JSON.stringify({
-          repo_owner: repoOwner,
-          repo_name: repoName,
-          access_token: githubToken,
+          repo_owner: repo.owner,
+          repo_name: repo.name,
         }),
       });
       setGithubConnection(res.connection);
-      setRepoOwner('');
-      setRepoName('');
-      setGithubToken('');
+      setSelectedRepo('');
     } catch (err: any) {
       alert(err.message || 'Failed to connect repository.');
     } finally {
@@ -221,51 +257,62 @@ export const ProjectSettings = () => {
             </div>
           ) : (
             <div className="bg-gray-950 border border-gray-800 rounded-lg p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1.5">Repo Owner</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. octocat"
-                    value={repoOwner}
-                    onChange={(e) => setRepoOwner(e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-white/50"
-                  />
+              {!isGithubAuthorized ? (
+                <div className="text-center py-4">
+                  <GitBranch className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+                  <h3 className="text-lg font-bold text-gray-200 mb-2">Connect your GitHub Account</h3>
+                  <p className="text-sm text-gray-400 mb-6 max-w-md mx-auto">
+                    Authorize DevSync to access your GitHub repositories to quickly link them to this project.
+                  </p>
+                  <button 
+                    onClick={handleAuthorizeGithub}
+                    className="inline-flex items-center px-5 py-2.5 bg-white text-gray-950 hover:bg-gray-200 text-sm font-bold rounded-lg transition-colors"
+                  >
+                    Authorize with GitHub
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1.5">Repo Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. my-repo"
-                    value={repoName}
-                    onChange={(e) => setRepoName(e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-white/50"
-                  />
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-1.5">Select a Repository</label>
+                    {isFetchingRepos ? (
+                      <div className="flex items-center space-x-2 text-sm text-gray-400 p-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Fetching your repositories...</span>
+                      </div>
+                    ) : (
+                      <select 
+                        value={selectedRepo}
+                        onChange={(e) => setSelectedRepo(e.target.value)}
+                        className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-white/50"
+                      >
+                        <option value="">-- Choose a repository --</option>
+                        {userRepos.map(repo => (
+                          <option key={repo.id} value={repo.fullName}>
+                            {repo.fullName} {repo.private ? '(Private)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="pt-2 flex items-center justify-between">
+                    <button 
+                      onClick={handleConnectGithub} 
+                      disabled={isConnecting || !selectedRepo}
+                      className="flex items-center px-4 py-2 bg-white text-gray-950 hover:bg-gray-200 text-sm font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isConnecting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      {isConnecting ? 'Connecting...' : 'Link Repository'}
+                    </button>
+                    <button 
+                      onClick={handleAuthorizeGithub}
+                      className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                    >
+                      Reconnect Account / Refresh Repos
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-1.5">Personal Access Token</label>
-                <input 
-                  type="password" 
-                  placeholder="ghp_xxxxxxxxxxxx"
-                  value={githubToken}
-                  onChange={(e) => setGithubToken(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-white/50"
-                />
-                <p className="text-xs text-gray-500 mt-2">
-                  Generate a token at <a href="https://github.com/settings/tokens" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">github.com/settings/tokens</a> with scopes: <strong>repo</strong>, <strong>admin:repo_hook</strong>.
-                </p>
-              </div>
-              <div className="pt-2">
-                <button 
-                  onClick={handleConnectGithub} 
-                  disabled={isConnecting}
-                  className="flex items-center px-4 py-2 bg-white text-gray-950 hover:bg-gray-200 text-sm font-bold rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {isConnecting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  {isConnecting ? 'Connecting...' : 'Connect Repository'}
-                </button>
-              </div>
+              )}
             </div>
           )}
         </div>

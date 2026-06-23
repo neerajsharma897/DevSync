@@ -2,6 +2,7 @@ export { LandingPage } from './LandingPage.js';
 export { LoginPage } from './auth/LoginPage.js';
 export { RegisterPage } from './auth/RegisterPage.js';
 export { OAuthCallbackPage } from './auth/OAuthCallbackPage.js';
+export { GithubCallbackPage } from './projects/GithubCallbackPage.js';
 export { WorkspaceList } from './workspaces/WorkspaceList.js';
 export { InviteAcceptancePage } from './auth/InviteAcceptancePage.js';
 

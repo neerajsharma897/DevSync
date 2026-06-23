@@ -18,6 +18,7 @@ export const users = pgTable('users', {
   avatarUrl:    text('avatar_url'),
   githubId:     varchar('github_id', { length: 64 }).unique(),
   githubLogin:  varchar('github_login', { length: 64 }),
+  githubAccessToken: text('github_access_token'),
   googleId:     varchar('google_id', { length: 64 }).unique(),
   passwordHash: text('password_hash'),
   presence:     varchar('presence', { length: 20 }).default('offline'),
