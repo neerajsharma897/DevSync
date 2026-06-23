@@ -88,7 +88,7 @@ body {
 }
 
 /* ===== MONOCHROME UTILITIES ===== */
-@utility glass-card {
+.glass-card {
   background: rgba(10, 10, 10, 0.5);
   backdrop-filter: blur(28px) saturate(1);
   -webkit-backdrop-filter: blur(28px) saturate(1);
@@ -97,7 +97,7 @@ body {
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
 }
 
-@utility glass-card-strong {
+.glass-card-strong {
   background: rgba(15, 15, 15, 0.7);
   backdrop-filter: blur(32px) saturate(1);
   -webkit-backdrop-filter: blur(32px) saturate(1);
@@ -106,21 +106,21 @@ body {
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
 }
 
-@utility glass-sidebar {
+.glass-sidebar {
   background: rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(32px) saturate(1);
   -webkit-backdrop-filter: blur(32px) saturate(1);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-@utility glass-topbar {
+.glass-topbar {
   background: rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(24px) saturate(1);
   -webkit-backdrop-filter: blur(24px) saturate(1);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-@utility glass-input {
+.glass-input {
   background: rgba(20, 20, 20, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
@@ -128,12 +128,12 @@ body {
   transition: all 0.2s ease;
 }
 
-@utility glass-input-focus {
+.glass-input-focus {
   border-color: rgba(255, 255, 255, 0.4);
   outline: none;
 }
 
-@utility glass-modal {
+.glass-modal {
   background: rgba(10, 10, 10, 0.95);
   backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
@@ -142,25 +142,25 @@ body {
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8);
 }
 
-@utility glass-badge {
+.glass-badge {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
 }
 
-@utility gradient-text {
+.gradient-text {
   color: #ffffff;
 }
 
-@utility gradient-text-warm {
+.gradient-text-warm {
   color: #eeeeee;
 }
 
-@utility gradient-border {
+.gradient-border {
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-@utility gradient-btn {
+.gradient-btn {
   background: #ffffff;
   color: #000000;
   border: 1px solid #ffffff;
@@ -170,17 +170,17 @@ body {
   transition: all 0.2s ease;
 }
 
-@utility gradient-btn-hover {
+.gradient-btn-hover {
   background: #e0e0e0;
   color: #000000;
   transform: translateY(-1px);
 }
 
-@utility glow-purple {
+.glow-purple {
   box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
 }
 
-@utility glow-purple-lg {
+.glow-purple-lg {
   box-shadow: 0 0 40px rgba(255, 255, 255, 0.15);
 }
 
@@ -215,32 +215,32 @@ body {
   50% { transform: translateY(-4px); }
 }
 
-@utility animate-fadeIn {
+.animate-fadeIn {
   animation: fadeIn 0.3s ease-out forwards;
 }
 
-@utility animate-slideInRight {
+.animate-slideInRight {
   animation: slideInRight 0.3s ease-out forwards;
 }
 
-@utility animate-slideInLeft {
+.animate-slideInLeft {
   animation: slideInLeft 0.3s ease-out forwards;
 }
 
-@utility animate-slideUp {
+.animate-slideUp {
   animation: slideUp 0.4s ease-out forwards;
 }
 
-@utility animate-scaleIn {
+.animate-scaleIn {
   animation: scaleIn 0.2s ease-out forwards;
 }
 
-@utility animate-float {
+.animate-float {
   animation: float 3s ease-in-out infinite;
 }
 
 /* ===== AUTH PAGE BACKGROUND ===== */
-@utility auth-bg {
+.auth-bg {
   background: #000000;
   position: relative;
   overflow: hidden;
@@ -293,58 +293,57 @@ mark {
 }
 
 /* ===== STATUS COLORS (Monochrome) ===== */
-@utility status-backlog {
+.status-backlog {
   background: rgba(40, 40, 40, 0.8);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-@utility status-todo {
+.status-todo {
   background: rgba(60, 60, 60, 0.8);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-@utility status-in-progress {
+.status-in-progress {
   background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-@utility status-in-review {
+.status-in-review {
   background: rgba(255, 255, 255, 0.05);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-@utility status-done {
+.status-done {
   background: rgba(255, 255, 255, 0.15);
   color: #ffffff;
   border: 1px solid #ffffff;
 }
 
 /* ===== PRIORITY BADGES (Monochrome) ===== */
-@utility priority-p0 {
+.priority-p0 {
   background: #ffffff;
   color: #000000;
   border: 1px solid #ffffff;
 }
 
-@utility priority-p1 {
+.priority-p1 {
   background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
-@utility priority-p2 {
+.priority-p2 {
   background: rgba(255, 255, 255, 0.1);
   color: #aaaaaa;
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-@utility priority-p3 {
+.priority-p3 {
   background: rgba(255, 255, 255, 0.05);
   color: #666666;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
-

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { apiFetch } from '../lib/api';
 import { useWorkspaceStore } from './workspaceStore';
 
+import { useCurrentWorkspaceStore } from './currentWorkspace.js';
+
 interface Channel {
   id: string;
   name: string;
@@ -25,6 +27,7 @@ interface ChatState {
   setActiveChannel: (id: string) => void;
   fetchMessages: (channelId: string) => Promise<void>;
   sendMessage: (channelId: string, body: string) => Promise<void>;
+  uploadFile: (file: File) => Promise<{ fileId: string, filename: string } | null>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -77,7 +80,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         id: m.messageId,
         channelId: m.channelId,
         senderId: m.senderId,
-        body: m.content || m.body,
+        body: m.bodyText || '',
         createdAt: m.createdAt
       }));
       set({ messages: mapped });
@@ -93,12 +96,60 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       await apiFetch(`/workspaces/${workspace.slug}/channels/${channelId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ content: body }),
+        body: JSON.stringify({ bodyText: body }),
       });
       // Re-fetch messages or let websockets handle it
       get().fetchMessages(channelId);
     } catch (err) {
       console.error('Failed to send message:', err);
+    }
+  },
+
+  uploadFile: async (file: File) => {
+    const workspace = useWorkspaceStore.getState().currentWorkspace;
+    const slug = workspace?.slug || useCurrentWorkspaceStore.getState().slug;
+    
+    if (!slug) {
+      console.error('No workspace slug found for upload');
+      return null;
+    }
+
+    try {
+      // 1. Get signed URL
+      const data = await apiFetch(`/workspaces/${slug}/files/upload-url`, {
+        method: 'POST',
+        body: JSON.stringify({
+          filename: file.name,
+          mimetype: file.type,
+          sizeBytes: file.size,
+          filetype: file.type.startsWith('image/') ? 'image' : 
+                   file.type.startsWith('video/') ? 'video' :
+                   file.type === 'application/pdf' ? 'pdf' : 'other'
+        })
+      });
+
+      if (!data.uploadUrl || !data.fileRecord) throw new Error('No upload URL returned');
+
+      // 2. Upload to Supabase directly
+      const uploadRes = await fetch(data.uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type
+        }
+      });
+
+      if (!uploadRes.ok) throw new Error('Upload failed');
+
+      // 3. Return file record details
+      return {
+        fileId: data.fileRecord.fileId,
+        filename: data.fileRecord.filename
+      };
+      
+    } catch (err) {
+      console.error('File upload failed:', err);
+      return null;
     }
   }
 }));

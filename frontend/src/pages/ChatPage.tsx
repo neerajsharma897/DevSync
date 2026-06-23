@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ChatSidebar from '../components/chat/ChatSidebar';
 import { useChatStore } from '../store/useChatStore';
 import { useWorkspaceStore } from '../store/workspaceStore';
 import { users } from '../data/users'; // Temporary fallback for user metadata
+import { apiFetch } from '../lib/api';
 import { 
   Send, 
   Plus,
@@ -18,8 +19,10 @@ const ChatPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentWorkspace } = useWorkspaceStore();
-  const { channels, activeChannel, messages, fetchChannels, setActiveChannel, sendMessage } = useChatStore();
+  const { channels, activeChannel, messages, fetchChannels, setActiveChannel, sendMessage, uploadFile } = useChatStore();
   const [inputText, setInputText] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (currentWorkspace) {
@@ -42,11 +45,82 @@ const ChatPage: React.FC = () => {
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const result = await uploadFile(file);
+    setIsUploading(false);
+
+    if (result) {
+      const newText = inputText 
+        ? `${inputText} [${result.filename}](file:${result.fileId})` 
+        : `[${result.filename}](file:${result.fileId})`;
+      setInputText(newText);
+    }
+    
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const renderMessageBody = (body: string) => {
+    if (!body) return '';
+    const fileRegex = /\[(.*?)\]\(file:([a-zA-Z0-9-]+)\)/g;
+    
+    if (!fileRegex.test(body)) {
+      return body;
+    }
+
+    const parts = [];
+    let lastIndex = 0;
+    fileRegex.lastIndex = 0;
+
+    let match;
+    while ((match = fileRegex.exec(body)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(body.substring(lastIndex, match.index));
+      }
+      
+      const filename = match[1];
+      const fileId = match[2];
+      
+      parts.push(
+        <a 
+          key={match.index}
+          href="#"
+          className="inline-flex items-center gap-1.5 px-2 py-1 mx-1 bg-bg-hover rounded-md border border-border-default text-accent-purple hover:bg-bg-elevated transition-colors"
+          onClick={async (e) => {
+             e.preventDefault();
+             try {
+                const res = await apiFetch(`/workspaces/${currentWorkspace?.slug}/files/${fileId}/download`);
+                if (res.downloadUrl) {
+                   window.open(res.downloadUrl, '_blank');
+                }
+             } catch (err) {
+                console.error("Failed to get download URL", err);
+             }
+          }}
+        >
+          <span className="text-[10px]">📎</span>
+          <span className="font-medium text-xs">{filename}</span>
+        </a>
+      );
+      
+      lastIndex = fileRegex.lastIndex;
+    }
+    
+    if (lastIndex < body.length) {
+      parts.push(body.substring(lastIndex));
+    }
+    
+    return <>{parts}</>;
   };
 
   return (
@@ -87,7 +161,9 @@ const ChatPage: React.FC = () => {
                            {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                          </span>
                       </div>
-                      <p className="text-sm text-text-primary leading-relaxed break-words">{msg.body}</p>
+                      <p className="text-sm text-text-primary leading-relaxed break-words whitespace-pre-wrap">
+                        {renderMessageBody(msg.body)}
+                      </p>
                    </div>
                 </div>
               );
@@ -103,9 +179,23 @@ const ChatPage: React.FC = () => {
                  <button className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded-md transition-all"><u>U</u></button>
               </div>
               <div className="flex items-center gap-3 p-3">
-                 <button className="shrink-0 text-text-muted hover:text-accent-purple transition-colors">
-                    <Plus size={20} />
+                 <button 
+                   onClick={() => fileInputRef.current?.click()}
+                   disabled={isUploading || !activeChannel}
+                   className="shrink-0 text-text-muted hover:text-accent-purple transition-colors disabled:opacity-50"
+                 >
+                    {isUploading ? (
+                      <div className="w-5 h-5 border-2 border-accent-purple border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Plus size={20} />
+                    )}
                  </button>
+                 <input 
+                   type="file" 
+                   className="hidden" 
+                   ref={fileInputRef} 
+                   onChange={handleFileChange} 
+                 />
                  <input 
                    type="text" 
                    value={inputText}

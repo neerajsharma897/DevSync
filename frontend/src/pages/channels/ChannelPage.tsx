@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useChatStore } from '../../store/chatStore.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { useAuthStore } from '../../store/auth.js';
-import { TiptapEditor } from '../../components/chat/TiptapEditor.js';
+import { TiptapEditor, renderFileLinks } from '../../components/chat/TiptapEditor.js';
 import { Hash, Lock, Users, Loader2, Smile, MessageSquare, X, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiFetch } from '../../lib/api.js';
@@ -172,6 +172,9 @@ export const ChannelPage = () => {
     // Basic logic for headers (simplified for thread)
     const showHeader = true;
 
+    // Render raw HTML — convert any [name](file:UUID) markers into styled anchors
+    const htmlContent = renderFileLinks(msg.bodyText || '');
+
     return (
       <div key={msg.messageId} className="group flex items-start -mx-4 px-4 py-1 hover:bg-gray-900/40 rounded-lg transition-colors relative">
         <div className="w-10 flex-shrink-0 flex justify-center">
@@ -191,8 +194,22 @@ export const ChannelPage = () => {
           )}
           
           <div 
-            className="text-gray-300 text-[15px] leading-relaxed prose prose-invert max-w-none prose-p:my-0 prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-800"
-            dangerouslySetInnerHTML={{ __html: msg.bodyText || '' }}
+            className="text-gray-300 text-[15px] leading-relaxed prose prose-invert max-w-none prose-p:my-0 prose-pre:bg-gray-900 prose-pre:border prose-pre:border-gray-800 prose-code:before:content-none prose-code:after:content-none"
+            dangerouslySetInnerHTML={{ __html: htmlContent }}
+            onClick={async (e) => {
+              const target = e.target as HTMLElement;
+              const fileLink = target.closest('[data-file-id]');
+              if (fileLink) {
+                e.preventDefault();
+                const fileId = fileLink.getAttribute('data-file-id');
+                try {
+                  const res = await apiFetch(`/workspaces/${slug}/files/${fileId}/download`);
+                  if (res.downloadUrl) window.open(res.downloadUrl, '_blank');
+                } catch (err) {
+                  console.error('Failed to get download URL', err);
+                }
+              }
+            }}
           />
 
           {!isThreadContext && msg.replyCount > 0 && (

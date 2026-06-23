@@ -1,0 +1,64 @@
+# DevSync — Technology Stack Overview
+
+This document outlines the core technologies used in the DevSync project, including the frontend, backend, infrastructure, and reasoning behind these choices.
+
+---
+
+## 🏗️ Architecture Summary
+
+DevSync uses a **monolithic backend** (Node.js/Express) communicating with a **Single Page Application frontend** (React). Both are built with **TypeScript**. The database and core authentication are delegated to **Supabase** (PostgreSQL-as-a-service).
+
+---
+
+## 🎨 Frontend Stack
+
+| Technology | Role | Why it was chosen |
+|---|---|---|
+| **React 19** | UI Library | Component-based UI, huge ecosystem, standard for modern SPAs. |
+| **Vite 8** | Build Tool & Bundler | Extremely fast HMR (Hot Module Replacement) and optimized production builds. |
+| **TypeScript 5** | Language | Type safety across the stack, reducing runtime errors. |
+| **TailwindCSS v4** | Styling | Utility-first CSS for rapid UI development without writing custom CSS classes. |
+| **Zustand 5** | State Management | Lightweight, fast, and boiler-plate free alternative to Redux. |
+| **React Router 7** | Routing | Standard client-side routing for SPAs. |
+| **Tiptap 3** | Rich Text Editor | Headless, highly customizable rich text editor used for the task description and chat inputs. |
+| **dnd-kit 6** | Drag and Drop | Accessible, flexible drag-and-drop toolkit used for the Kanban board columns and cards. |
+| **Recharts 3** | Data Visualization | Used for the sprint burndown charts and analytics. |
+| **Framer Motion 12** | Animations | Smooth, physics-based micro-animations for UI elements. |
+| **Socket.io-client 4** | Real-time Client | Receives WebSocket events for instant chat messages and live task updates. |
+| **Lucide React** | Icons | Clean, consistent SVG icon set. |
+
+---
+
+## ⚙️ Backend Stack
+
+| Technology | Role | Why it was chosen |
+|---|---|---|
+| **Node.js (ESM)** | Runtime | Allows sharing TypeScript types with the frontend and unifies the stack language. |
+| **Express 5** | Web Framework | Lightweight, unopinionated routing and middleware engine. |
+| **Drizzle ORM** | Database ORM | Type-safe, SQL-like ORM that is lighter and faster than Prisma. |
+| **Supabase (PostgreSQL)** | Database | Managed PostgreSQL with built-in pgvector (for future AI) and row-level security capabilities. |
+| **Socket.io 4** | WebSockets | Handles real-time bi-directional event emission (e.g., chat messages). |
+| **Zod 3** | Schema Validation | Validates incoming request payloads (req.body) against strict schemas before controller logic. |
+| **LexoRank** | Sorting Algorithm | Used to generate alphanumeric strings for drag-and-drop task ordering in the backlog without recalculating all rows. |
+| **JWT (jsonwebtoken)** | Authentication | Stateless session management for the API. |
+| **bcryptjs** | Password Hashing | Secure hashing for local email/password accounts. |
+| **helmet & cors** | Security | Standard Express security middleware headers and cross-origin controls. |
+
+---
+
+## ☁️ Infrastructure & Services
+
+| Service | Role | Usage |
+|---|---|---|
+| **Supabase Auth** | Identity Provider | Handles OAuth flows (GitHub, Google) securely without us managing the handshake. |
+| **Supabase Storage** | File Storage | Stores avatar images, task attachments, and chat files in S3-compatible buckets. |
+| **ngrok** | Local Tunneling | Exposes the local backend (`localhost:3001`) to the internet to receive GitHub Webhook payloads during development. |
+
+---
+
+## 🔮 Future / Planned Stack (Not Yet Wired)
+
+The following technologies are present in the `package.json` and directory structure but are reserved for future phases:
+
+*   **BullMQ & ioRedis:** Planned for background job processing (e.g., sending emails, long-running AI tasks) inside the `workers/` directory.
+*   **AI Integration:** The `modules/ai` directory is scaffolded to eventually integrate with LLMs (like OpenAI or Anthropic) for generating sprint summaries and task duration estimates.
