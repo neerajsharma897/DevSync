@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useChatStore } from '../../store/chatStore.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { useAuthStore } from '../../store/auth.js';
-import { TiptapEditor, renderFileLinks } from '../../components/chat/TiptapEditor.js';
+import { TiptapEditor, renderMessageContent } from '../../components/chat/TiptapEditor.js';
 import { Hash, Lock, Users, Loader2, Smile, MessageSquare, X, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiFetch } from '../../lib/api.js';
@@ -36,6 +36,8 @@ export const ChannelPage = () => {
   const [activeThreadMessageId, setActiveThreadMessageId] = useState<string | null>(null);
   const [threadReplies, setThreadReplies] = useState<any[]>([]);
   const [isThreadLoading, setIsThreadLoading] = useState(false);
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
+  const [threadsCache, setThreadsCache] = useState<Record<string, any[]>>({});
   const [canChat, setCanChat] = useState(true);
 
   useEffect(() => {
@@ -94,6 +96,25 @@ export const ChannelPage = () => {
       threadScrollRef.current.scrollTop = threadScrollRef.current.scrollHeight;
     }
   }, [threadReplies]);
+
+  const toggleThreadInline = async (messageId: string) => {
+    const newSet = new Set(expandedThreads);
+    if (newSet.has(messageId)) {
+      newSet.delete(messageId);
+      setExpandedThreads(newSet);
+    } else {
+      newSet.add(messageId);
+      setExpandedThreads(newSet);
+      if (!threadsCache[messageId]) {
+        try {
+          const data = await apiFetch(`/workspaces/${slug}/channels/${channelId}/messages/${messageId}/thread`);
+          setThreadsCache(prev => ({ ...prev, [messageId]: data.replies || [] }));
+        } catch (err: any) {
+          console.error(err);
+        }
+      }
+    }
+  };
 
   const loadThread = async (messageId: string) => {
     setActiveThreadMessageId(messageId);
@@ -172,11 +193,11 @@ export const ChannelPage = () => {
     // Basic logic for headers (simplified for thread)
     const showHeader = true;
 
-    // Render raw HTML — convert any [name](file:UUID) markers into styled anchors
-    const htmlContent = renderFileLinks(msg.bodyText || '');
+    // Render raw HTML — convert file markers and task mentions into styled anchors/spans
+    const htmlContent = renderMessageContent(msg.bodyText || '');
 
     return (
-      <div key={msg.messageId} className="group flex items-start -mx-4 px-4 py-1 hover:bg-gray-900/40 rounded-lg transition-colors relative">
+      <div key={msg.messageId} className={`group flex items-start py-1 hover:bg-gray-900/40 rounded-lg transition-colors relative ${isThreadContext ? '' : '-mx-4 px-4'}`}>
         <div className="w-10 flex-shrink-0 flex justify-center">
           {showHeader && (
             <div className="w-9 h-9 rounded-md bg-gradient-to-br from-gray-700 to-gray-500 flex items-center justify-center text-white font-bold shadow-md border border-gray-800">
@@ -208,19 +229,48 @@ export const ChannelPage = () => {
                 } catch (err) {
                   console.error('Failed to get download URL', err);
                 }
+                return;
+              }
+
+              const taskLink = target.closest('[data-task-key]');
+              if (taskLink) {
+                e.preventDefault();
+                const taskKey = taskLink.getAttribute('data-task-key');
+                if (taskKey) {
+                  const projectKey = taskKey.split('-')[0];
+                  navigate(`/w/${slug}/projects/${projectKey}/tasks/${taskKey}`);
+                }
               }
             }}
           />
 
           {!isThreadContext && msg.replyCount > 0 && (
-            <div className="mt-2">
+            <div className="mt-2 flex items-center gap-3">
+              <button 
+                onClick={() => toggleThreadInline(msg.messageId)}
+                className="flex items-center text-sm font-medium text-blue-400 hover:text-blue-300 px-1 py-0.5 rounded transition-colors"
+              >
+                <span className="font-mono font-bold mr-1.5 text-lg leading-none">{expandedThreads.has(msg.messageId) ? '[-]' : '[+]'}</span>
+                {msg.replyCount} {msg.replyCount === 1 ? 'reply' : 'replies'} inline
+              </button>
               <button 
                 onClick={() => loadThread(msg.messageId)}
-                className="flex items-center text-sm font-medium text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-1 rounded transition-colors"
+                className="flex items-center text-sm font-medium text-gray-400 hover:text-gray-300 bg-gray-800/50 hover:bg-gray-800 px-2 py-1 rounded transition-colors"
               >
                 <MessageSquare className="w-4 h-4 mr-1.5" />
-                {msg.replyCount} {msg.replyCount === 1 ? 'reply' : 'replies'}
+                Sidebar
               </button>
+            </div>
+          )}
+
+          {/* Inline Nested Replies */}
+          {!isThreadContext && expandedThreads.has(msg.messageId) && threadsCache[msg.messageId] && (
+            <div className="mt-3 ml-2 pl-4 border-l-2 border-gray-800 space-y-2">
+              {threadsCache[msg.messageId].map((reply: any) => (
+                <div key={reply.messageId} className="relative">
+                  {renderMessage(reply, true)}
+                </div>
+              ))}
             </div>
           )}
         </div>

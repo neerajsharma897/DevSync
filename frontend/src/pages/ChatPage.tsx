@@ -12,16 +12,20 @@ import {
   Info, 
   Search, 
   MoreVertical,
-  Hash
+  Hash,
+  MessageSquarePlus,
+  X
 } from 'lucide-react';
 
 const ChatPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentWorkspace } = useWorkspaceStore();
-  const { channels, activeChannel, messages, fetchChannels, setActiveChannel, sendMessage, uploadFile } = useChatStore();
+  const { channels, activeChannel, messages, threads, fetchChannels, setActiveChannel, fetchThreadReplies, sendMessage, uploadFile } = useChatStore();
   const [inputText, setInputText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<any>(null);
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -40,8 +44,9 @@ const ChatPage: React.FC = () => {
 
   const handleSend = () => {
     if (inputText.trim() && activeChannel) {
-      sendMessage(activeChannel.id, inputText.trim());
+      sendMessage(activeChannel.id, inputText.trim(), replyingTo?.id);
       setInputText('');
+      setReplyingTo(null);
     }
   };
 
@@ -151,20 +156,84 @@ const ChatPage: React.FC = () => {
         <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6">
            {messages.map(msg => {
               const sender = users.find(u => u.id === msg.senderId) || { fullName: 'User', avatar: 'https://ui-avatars.com/api/?name=U' };
+              const isExpanded = expandedThreads.has(msg.id);
+              
               return (
-                <div key={msg.id} className="flex gap-4 group/msg">
-                   <img src={sender?.avatar} alt={sender?.fullName} className="w-10 h-10 rounded-full shrink-0" />
-                   <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                         <span className="text-sm font-bold hover:underline cursor-pointer">{sender?.fullName}</span>
-                         <span className="text-[10px] text-text-muted">
-                           {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                         </span>
+                <div key={msg.id} className="flex flex-col gap-2 group/msg">
+                   <div className="flex gap-4">
+                      <img src={sender?.avatar} alt={sender?.fullName} className="w-10 h-10 rounded-full shrink-0" />
+                      <div className="flex-1 min-w-0 relative">
+                         <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-bold hover:underline cursor-pointer">{sender?.fullName}</span>
+                            <span className="text-[10px] text-text-muted">
+                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                         </div>
+                         <p className="text-sm text-text-primary leading-relaxed break-words whitespace-pre-wrap">
+                           {renderMessageBody(msg.body)}
+                         </p>
+
+                         {/* Hover actions */}
+                         <div className="absolute -top-3 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity bg-bg-elevated border border-border-default rounded-md flex shadow-sm z-10">
+                            <button 
+                               onClick={() => setReplyingTo(msg)}
+                               className="p-1.5 text-text-muted hover:text-accent-purple"
+                               title="Reply in thread"
+                            >
+                               <MessageSquarePlus size={16} />
+                            </button>
+                         </div>
                       </div>
-                      <p className="text-sm text-text-primary leading-relaxed break-words whitespace-pre-wrap">
-                        {renderMessageBody(msg.body)}
-                      </p>
                    </div>
+
+                   {/* Thread toggle button */}
+                   {msg.replyCount > 0 && (
+                     <div className="ml-14">
+                        <button 
+                          onClick={() => {
+                             const newExpanded = new Set(expandedThreads);
+                             if (isExpanded) {
+                                newExpanded.delete(msg.id);
+                             } else {
+                                newExpanded.add(msg.id);
+                                if (activeChannel && !threads[msg.id]) {
+                                   fetchThreadReplies(activeChannel.id, msg.id);
+                                }
+                             }
+                             setExpandedThreads(newExpanded);
+                          }}
+                          className="flex items-center gap-2 text-xs font-medium text-accent-purple hover:underline"
+                        >
+                          <span className="text-lg leading-none">{isExpanded ? '-' : '+'}</span>
+                          <span>{msg.replyCount} {msg.replyCount === 1 ? 'reply' : 'replies'}</span>
+                        </button>
+                     </div>
+                   )}
+
+                   {/* Nested Replies */}
+                   {isExpanded && threads[msg.id] && (
+                     <div className="ml-14 pl-4 border-l-2 border-border-default/50 space-y-4 mt-2">
+                        {threads[msg.id].map(reply => {
+                           const replySender = users.find(u => u.id === reply.senderId) || { fullName: 'User', avatar: 'https://ui-avatars.com/api/?name=U' };
+                           return (
+                              <div key={reply.id} className="flex gap-3">
+                                 <img src={replySender?.avatar} alt={replySender?.fullName} className="w-6 h-6 rounded-full shrink-0" />
+                                 <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                       <span className="text-xs font-bold">{replySender?.fullName}</span>
+                                       <span className="text-[10px] text-text-muted">
+                                         {new Date(reply.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                       </span>
+                                    </div>
+                                    <p className="text-sm text-text-primary leading-relaxed break-words whitespace-pre-wrap">
+                                       {renderMessageBody(reply.body)}
+                                    </p>
+                                 </div>
+                              </div>
+                           );
+                        })}
+                     </div>
+                   )}
                 </div>
               );
            })}
@@ -173,6 +242,19 @@ const ChatPage: React.FC = () => {
         {/* Message Input Area */}
         <div className="p-6 pt-0">
            <div className="glass-card bg-bg-tertiary/60 border-border-default p-1 focus-within:border-accent-purple/50 transition-all">
+              {replyingTo && (
+                <div className="flex items-center justify-between px-3 py-2 bg-bg-elevated/50 text-xs border-b border-border-default/30 rounded-t-lg mx-2 mt-1">
+                   <div className="flex items-center gap-2 text-text-muted">
+                      <span className="text-accent-purple font-medium">
+                        Replying to {users.find(u => u.id === replyingTo.senderId)?.fullName || 'message'}
+                      </span>
+                      <span className="truncate max-w-[200px] italic">"{replyingTo.body.substring(0, 30)}..."</span>
+                   </div>
+                   <button onClick={() => setReplyingTo(null)} className="text-text-muted hover:text-text-primary">
+                      <X size={14} />
+                   </button>
+                </div>
+              )}
               <div className="flex items-center gap-2 px-2 py-1 border-b border-border-default/30 mb-1">
                  <button className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded-md transition-all"><b>B</b></button>
                  <button className="p-1.5 text-text-muted hover:text-text-primary hover:bg-bg-hover rounded-md transition-all"><i>I</i></button>
