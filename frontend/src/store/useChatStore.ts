@@ -16,17 +16,21 @@ interface Message {
   senderId: string;
   body: string;
   createdAt: string;
+  replyCount: number;
+  threadId: string | null;
 }
 
 interface ChatState {
   channels: Channel[];
   activeChannel: Channel | null;
   messages: Message[];
+  threads: Record<string, Message[]>;
   isLoading: boolean;
   fetchChannels: () => Promise<void>;
   setActiveChannel: (id: string) => void;
   fetchMessages: (channelId: string) => Promise<void>;
-  sendMessage: (channelId: string, body: string) => Promise<void>;
+  fetchThreadReplies: (channelId: string, messageId: string) => Promise<void>;
+  sendMessage: (channelId: string, body: string, threadId?: string) => Promise<void>;
   uploadFile: (file: File) => Promise<{ fileId: string, filename: string } | null>;
 }
 
@@ -34,6 +38,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   channels: [],
   activeChannel: null,
   messages: [],
+  threads: {},
   isLoading: false,
 
   fetchChannels: async () => {
@@ -79,9 +84,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const mapped = data.messages.map((m: any) => ({
         id: m.messageId,
         channelId: m.channelId,
-        senderId: m.senderId,
+        senderId: m.authorId || m.senderId,
         body: m.bodyText || '',
-        createdAt: m.createdAt
+        createdAt: m.createdAt,
+        replyCount: m.replyCount || 0,
+        threadId: m.threadId || null
       }));
       set({ messages: mapped });
     } catch (err) {
@@ -89,17 +96,49 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  sendMessage: async (channelId, body) => {
+  fetchThreadReplies: async (channelId, messageId) => {
+    const workspace = useWorkspaceStore.getState().currentWorkspace;
+    if (!workspace) return;
+
+    try {
+      const data = await apiFetch(`/workspaces/${workspace.slug}/channels/${channelId}/messages/${messageId}/thread`);
+      const mapped = data.replies.map((m: any) => ({
+        id: m.messageId,
+        channelId: channelId,
+        senderId: m.authorId || m.senderId,
+        body: m.bodyText || '',
+        createdAt: m.createdAt,
+        replyCount: 0,
+        threadId: m.threadId || messageId
+      }));
+      
+      set((state) => ({
+        threads: {
+          ...state.threads,
+          [messageId]: mapped
+        }
+      }));
+    } catch (err) {
+      console.error('Failed to fetch thread replies:', err);
+    }
+  },
+
+  sendMessage: async (channelId, body, threadId) => {
     const workspace = useWorkspaceStore.getState().currentWorkspace;
     if (!workspace) return;
 
     try {
       await apiFetch(`/workspaces/${workspace.slug}/channels/${channelId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ bodyText: body }),
+        body: JSON.stringify({ bodyText: body, threadId }),
       });
       // Re-fetch messages or let websockets handle it
-      get().fetchMessages(channelId);
+      if (threadId) {
+        get().fetchThreadReplies(channelId, threadId);
+        get().fetchMessages(channelId); // Update parent reply count
+      } else {
+        get().fetchMessages(channelId);
+      }
     } catch (err) {
       console.error('Failed to send message:', err);
     }

@@ -11,12 +11,19 @@ import suggestion from './suggestion.js';
 import { useCurrentWorkspaceStore } from '../../store/currentWorkspace.js';
 import { useChatStore as useUploadStore } from '../../store/useChatStore.js';
 
-// ── File attachment node renderer in message output ────────────────────────
-// Files are stored as markdown-like text: [name](file:UUID) inside the HTML
-export function renderFileLinks(html: string): string {
-  return html.replace(/\[(.*?)\]\(file:([a-zA-Z0-9-]+)\)/g, (_, name, id) =>
+export function renderMessageContent(html: string): string {
+  let processed = html.replace(/\[(.*?)\]\(file:([a-zA-Z0-9-]+)\)/g, (_, name, id) =>
     `<a href="#" data-file-id="${id}" class="inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 bg-gray-800 rounded border border-gray-700 text-blue-400 hover:bg-gray-700 transition-colors no-underline text-xs font-medium">📎 ${name}</a>`
   );
+
+  // Replace @TASK-123 with clickable spans
+  processed = processed.replace(/(?<!["'])(@([A-Z]+-\d+))/gi, (fullMatch, taskKey) => {
+    // If it's already wrapped in our span from a previous render, we don't want to wrap it again if it was saved like that,
+    // but typically it's saved as plain text or a simple Tiptap span.
+    return `<span data-task-key="${taskKey.toUpperCase()}" class="text-blue-400 bg-blue-500/10 px-1 rounded font-medium cursor-pointer hover:underline" title="Go to task ${taskKey.toUpperCase()}">${fullMatch}</span>`;
+  });
+
+  return processed;
 }
 
 interface TiptapEditorProps {
@@ -244,7 +251,7 @@ export const TiptapEditor = ({
               title="Code block — Ctrl+Alt+C"
               onClick={() => editor.chain().focus().toggleCodeBlock().run()}
             >
-              <span className="text-[11px] font-mono font-bold">{ `</>` }</span>
+              <span className="text-[11px] font-mono font-bold">{`</>`}</span>
             </ToolBtn>
             <ToolBtn
               active={editor.isActive('blockquote')}
