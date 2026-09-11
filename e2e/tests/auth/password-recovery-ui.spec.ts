@@ -57,13 +57,13 @@ test.describe('Password Recovery — UI', () => {
 
     // Old password is dead
     await page.getByPlaceholder('you@company.com').fill(email);
-    await page.getByLabel('Password').fill(TEST_PASSWORD);
+    await page.getByLabel('Password', { exact: true }).fill(TEST_PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page.getByText('Invalid email or password')).toBeVisible();
 
     // New password works
     await page.getByPlaceholder('you@company.com').fill(email);
-    await page.getByLabel('Password').fill(newPassword);
+    await page.getByLabel('Password', { exact: true }).fill(newPassword);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).toHaveURL(`${BASE}/workspaces`);
   });
@@ -75,7 +75,7 @@ test.describe('Password Recovery — UI', () => {
     // Sign in
     await page.goto(`${BASE}/login`);
     await page.getByPlaceholder('you@company.com').fill(email);
-    await page.getByLabel('Password').fill(TEST_PASSWORD);
+    await page.getByLabel('Password', { exact: true }).fill(TEST_PASSWORD);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).toHaveURL(`${BASE}/workspaces`);
 
@@ -95,10 +95,14 @@ test.describe('Password Recovery — UI', () => {
     await page.evaluate(async (apiBase) => {
       await fetch(`${apiBase}/auth/logout`, { method: 'POST', credentials: 'include' });
       localStorage.clear();
+      // localStorage.clear() also drops the cookie-consent flag the base
+      // storage state seeded, which brings CookieConsentBanner back over
+      // the login form's Sign in button on the next goto.
+      localStorage.setItem('cookie-consent', 'all');
     }, API_URL);
     await page.goto(`${BASE}/login`);
     await page.getByPlaceholder('you@company.com').fill(email);
-    await page.getByLabel('Password').fill(newPassword);
+    await page.getByLabel('Password', { exact: true }).fill(newPassword);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).toHaveURL(`${BASE}/workspaces`);
   });

@@ -8,6 +8,7 @@ import { Loader2Icon, MailOpenIcon } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Separator } from '@/components/ui/separator';
 import { PASSWORD_ERROR, PASSWORD_REGEX, PASSWORD_RULE } from '@/lib/password';
@@ -123,9 +124,8 @@ export function RegisterPage() {
 
           <Field data-invalid={!!errors.password}>
             <FieldLabel htmlFor="password">Password</FieldLabel>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               autoComplete="new-password"
               aria-invalid={!!errors.password}
               {...form.register('password')}
@@ -141,6 +141,17 @@ export function RegisterPage() {
             {isSubmitting ? <Loader2Icon className="size-4 animate-spin" aria-hidden="true" /> : null}
             Create account
           </Button>
+
+          <p className="mt-4 text-center text-[12.5px] leading-relaxed text-muted-foreground">
+            By creating an account, you agree to our{' '}
+            <Link to="/terms-of-service" className="underline underline-offset-4 hover:text-foreground">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link to="/privacy-policy" className="underline underline-offset-4 hover:text-foreground">
+              Privacy Policy
+            </Link>.
+          </p>
         </FieldGroup>
       </form>
     </AuthShell>
