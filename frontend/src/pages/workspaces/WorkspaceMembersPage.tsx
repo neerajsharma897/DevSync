@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { MailPlusIcon, MessageSquareIcon, MoreHorizontalIcon, Trash2Icon } from 'lucide-react';
+import { MailPlusIcon, MessageSquareIcon, MoreVerticalIcon, Trash2Icon } from 'lucide-react';
 
 import { MemberAvatar } from '@/components/MemberAvatar';
 import { ErrorState, TableSkeleton } from '@/components/layout/PageState';
@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PageHeader, PageShell } from '@/components/layout/PageHeader';
 import { LeaveWorkspaceButton } from '@/pages/workspaces/LeaveWorkspaceButton';
+import { Pager } from '@/components/Pager';
 import { useCurrentWorkspaceStore } from '@/store/currentWorkspace';
 import { useAuthStore } from '@/store/auth';
 import { apiFetch } from '@/lib/api';
@@ -128,6 +129,8 @@ export function WorkspaceMembersPage() {
   const [stateFilter, setStateFilter] = useState(ANY);
   const [memberToRemove, setMemberToRemove] = useState<WorkspaceMember | null>(null);
 
+  const [page, setPage] = useState(1);
+
   const hasFilters = filter.trim() !== '' || roleFilter !== ANY || stateFilter !== ANY;
 
   // A long-lived workspace can carry hundreds of members and the API returns
@@ -141,6 +144,10 @@ export function WorkspaceMembersPage() {
         (stateFilter === ANY || m.state === stateFilter),
     );
   }, [members, filter, roleFilter, stateFilter]);
+
+  const pageSize = 20;
+  const totalPages = Math.ceil(visible.length / pageSize);
+  const paginated = visible.slice((page - 1) * pageSize, page * pageSize);
 
   const canInvite = isAdmin();
   const canChangeRoles = isOwner();
@@ -234,8 +241,8 @@ export function WorkspaceMembersPage() {
 
       {canInvite ? (
         <Card className="mb-6">
-          <CardContent className="flex flex-wrap items-end gap-3">
-            <div className="min-w-56 flex-1">
+          <CardContent className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-end gap-3">
+            <div className="flex-1">
               <label htmlFor="invite-email" className="mb-1.5 block text-sm text-foreground">
                 Invite by email
               </label>
@@ -247,68 +254,72 @@ export function WorkspaceMembersPage() {
                 placeholder="teammate@company.com"
               />
             </div>
-            <div className="w-40">
-              <label htmlFor="invite-role" className="mb-1.5 block text-sm text-foreground">
-                Role
-              </label>
-              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as WorkspaceRole)}>
-                <SelectTrigger id="invite-role" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLES.filter((r) => r.value !== 'owner').map((r) => (
-                    <SelectItem key={r.value} value={r.value}>
-                      {r.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex flex-col sm:contents gap-3">
+              <div className="flex-1 sm:w-40 sm:flex-none">
+                <label htmlFor="invite-role" className="mb-1.5 block text-sm text-foreground">
+                  Role
+                </label>
+                <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as WorkspaceRole)}>
+                  <SelectTrigger id="invite-role" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ROLES.filter((r) => r.value !== 'owner').map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button className="w-full sm:w-auto" onClick={() => void invite()} disabled={!email.trim() || busy === 'invite'}>
+                <MailPlusIcon className="size-4" aria-hidden="true" />
+                Send invite
+              </Button>
             </div>
-            <Button onClick={() => void invite()} disabled={!email.trim() || busy === 'invite'}>
-              <MailPlusIcon className="size-4" aria-hidden="true" />
-              Send invite
-            </Button>
           </CardContent>
         </Card>
       ) : null}
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2">
         <Input
           type="search"
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={(e) => { setFilter(e.target.value); setPage(1); }}
           placeholder="Filter by name or email"
           aria-label="Filter members"
-          className="max-w-xs"
+          className="w-full sm:max-w-xs"
         />
 
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
-          <SelectTrigger className="w-36" aria-label="Filter by role">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ANY}>All roles</SelectItem>
-            {ROLES.map((r) => (
-              <SelectItem key={r.value} value={r.value}>
-                {r.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2">
+          <Select value={roleFilter} onValueChange={(val) => { setRoleFilter(val); setPage(1); }}>
+            <SelectTrigger className="flex-1 sm:w-36" aria-label="Filter by role">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY}>All roles</SelectItem>
+              {ROLES.map((r) => (
+                <SelectItem key={r.value} value={r.value}>
+                  {r.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Select value={stateFilter} onValueChange={setStateFilter}>
-          <SelectTrigger className="w-40" aria-label="Filter by status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ANY}>All statuses</SelectItem>
-            {STATES.map((s) => (
-              <SelectItem key={s.value} value={s.value}>
-                {s.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <Select value={stateFilter} onValueChange={(val) => { setStateFilter(val); setPage(1); }}>
+            <SelectTrigger className="flex-1 sm:w-40" aria-label="Filter by status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY}>All statuses</SelectItem>
+              {STATES.map((s) => (
+                <SelectItem key={s.value} value={s.value}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         {hasFilters ? (
           <Button
@@ -318,6 +329,7 @@ export function WorkspaceMembersPage() {
               setFilter('');
               setRoleFilter(ANY);
               setStateFilter(ANY);
+              setPage(1);
             }}
           >
             Clear filters
@@ -342,13 +354,13 @@ export function WorkspaceMembersPage() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead>Member</TableHead>
-                <TableHead className="w-40">Role</TableHead>
-                <TableHead className="w-36">Status</TableHead>
-                {showActionColumn ? <TableHead className="w-16 text-right"><span className="sr-only">Actions</span></TableHead> : null}
+                <TableHead className="w-28 sm:w-40 text-right sm:text-left">Role</TableHead>
+                <TableHead className="hidden sm:table-cell w-36">Status</TableHead>
+                {showActionColumn ? <TableHead className="w-10 sm:w-12 text-right"><span className="sr-only">Actions</span></TableHead> : null}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visible.length === 0 ? (
+              {paginated.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={showActionColumn ? 4 : 3}
@@ -358,7 +370,7 @@ export function WorkspaceMembersPage() {
                   </TableCell>
                 </TableRow>
               ) : null}
-              {visible.map((member) => {
+              {paginated.map((member) => {
                 const name = member.displayName || member.fullName;
                 const isMe = member.userId === myUserId;
                 const isTheOwner = member.role === 'owner';
@@ -368,8 +380,8 @@ export function WorkspaceMembersPage() {
 
                 return (
                   <TableRow key={member.userId}>
-                    <TableCell>
-                      <div className="flex items-center gap-3.5">
+                    <TableCell className="max-w-[140px] sm:max-w-none">
+                      <div className="flex items-center gap-2.5 sm:gap-3.5">
                         <MemberAvatar member={member} />
                         <div className="min-w-0">
                           <p className="truncate font-medium text-foreground">
@@ -381,11 +393,11 @@ export function WorkspaceMembersPage() {
                       </div>
                     </TableCell>
 
-                    <TableCell>
+                    <TableCell className="text-right sm:text-left">
                       <RoleBadge role={member.role} />
                     </TableCell>
 
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       <StatusBadge state={member.state} />
                     </TableCell>
 
@@ -400,7 +412,7 @@ export function WorkspaceMembersPage() {
                                 className="size-8 text-muted-foreground hover:text-foreground"
                                 disabled={busy === member.userId}
                               >
-                                <MoreHorizontalIcon className="size-4" />
+                                <MoreVerticalIcon className="size-4" />
                                 <span className="sr-only">Actions for {name}</span>
                               </Button>
                             </DropdownMenuTrigger>
@@ -453,6 +465,13 @@ export function WorkspaceMembersPage() {
               })}
             </TableBody>
           </Table>
+          
+          <Pager 
+            page={page} 
+            totalPages={totalPages} 
+            totalCount={visible.length} 
+            onPage={setPage} 
+          />
         </CardContent>
       </Card>
 

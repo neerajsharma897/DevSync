@@ -13,16 +13,18 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useNotificationStore } from '@/store/notificationStore';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
 export function NotificationBell({ slug }: { slug: string }) {
   const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, resolveUrl } =
     useNotificationStore();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
-    void fetchNotifications();
-  }, [fetchNotifications]);
+    void fetchNotifications(slug);
+  }, [fetchNotifications, slug]);
 
   const open = async (id: string) => {
     void markAsRead(id);
@@ -50,7 +52,11 @@ export function NotificationBell({ slug }: { slug: string }) {
           ) : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-90">
+      <DropdownMenuContent 
+        align="end" 
+        alignOffset={isMobile ? -40 : 0}
+        className="w-[calc(100vw-2rem)] sm:w-90"
+      >
         <DropdownMenuLabel className="flex items-center justify-between gap-2">
           <span>Notifications</span>
           {unreadCount > 0 ? (
@@ -59,7 +65,7 @@ export function NotificationBell({ slug }: { slug: string }) {
               size="xs"
               onClick={(e) => {
                 e.preventDefault();
-                void markAllAsRead();
+                void markAllAsRead(slug);
               }}
             >
               <CheckCheckIcon className="size-3.5" aria-hidden="true" />
